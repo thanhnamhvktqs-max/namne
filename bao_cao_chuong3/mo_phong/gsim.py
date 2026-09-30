@@ -123,7 +123,9 @@ def simulate(cfg, T, wd, theta_ref=None, seed=1, cal=CAL, plant=PLANT, record=Fa
     """Mo phong dong thoi hai truc tren luoi thoi gian T (buoc 2 ms)."""
     rng = np.random.default_rng(seed)
     N = len(T)
-    ev = schedule(cfg['bus'], T[-1] - T[0] + 0.1, rng)
+    ev = schedule(cfg['bus'], T[-1] - T[0] + 0.1, rng, slot=cfg.get('slot', 5e-3))
+    if cfg.get('ev') is not None:
+        ev = cfg['ev']                        # lich cho truoc (so sanh cap, cung chuoi nhieu)
     res = {}
     # chuan bi lich phat/nhan theo buoc tinh cho moi truc
     tx_step = {}

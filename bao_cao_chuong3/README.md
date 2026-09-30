@@ -4,6 +4,7 @@
 - `Chuong3_3.1.3_den_het.pdf`: bản xem trước (xuất bằng LibreOffice, 26 trang).
 - `hinh/`: 18 hình PNG 600 dpi, vẽ đúng kích thước trên trang A4 (rộng ≤ 16 cm) và chèn vào Word không co giãn.
 - `mo_phong/`: mã nguồn tái tạo toàn bộ số liệu và hình.
+- `Muc_3.4.1_lich_RS485.docx` / `.pdf`: bản thiết kế lại riêng mục 3.4.1 (Hình 3.19 – 3.21, Bảng 3.12 – 3.13, công thức (3.7)); hình ở `hinh_3.4.1/`. Khi ghép vào chương, mục này có thêm một hình nên các hình sau nó tăng số thứ tự thêm 1 (Hình 3.21 cũ thành 3.22, Hình 3.22 cũ thành 3.23).
 
 ## Chuẩn trình bày hình
 
@@ -35,4 +36,8 @@ python run_part4.py       # chạy bổ sung để mọi ô bảng đều có gi
 python figs.py            # hình -> figs/ (600 dpi, kèm kiểm tra bố cục)
 cp <báo cáo gốc>.docx report.docx
 cat build_head.py build_body.py > build_ch3.py && python build_ch3.py
+# riêng mục 3.4.1
+python run_part5.py       # thử cặp lịch Pitch, khảo sát lịch / độ dài khe, bộ đếm bus log A
+python figs341.py figs log_A.txt
+python build341.py
 ```

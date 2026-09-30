@@ -278,7 +278,7 @@ def check(fig, name):
             if ix > 0.5 and iy > 0.5:
                 issues.append(f'chong: [{ka}] {_name(ta)!r} / [{kb}] {_name(tb)!r}')
     for kind, t, bb in items:
-        if kind in ('legend', 'ftext', 'atext'):
+        if kind in ('legend', 'ftext', 'atext') and not getattr(t, '_ann', False):
             for a in fig.axes:
                 ab = a.get_window_extent(r)
                 ix = min(ab.x1, bb.x1) - max(ab.x0, bb.x0); iy = min(ab.y1, bb.y1) - max(ab.y0, bb.y0)
@@ -324,10 +324,13 @@ def _chg(vb, va):
     return ('+' if d > 0 else '−') + num(abs(d), 1) + ' %'
 
 
-def before_after(name, before, after_, windows, metrics, extra_log=False):
+def before_after(name, before, after_, windows, metrics, extra_log=False, extra=None):
+    """extra: {'row': dict hang bo sung, 'draw': ham(fig, g)} - them mot hang hinh con sau c)."""
     nm = len(metrics)
     ax0, axw = 3.9, 6.9          # hinh con c): le trai rong cho ten chi tieu, cot gia tri ben phai
     rows = [dict(cols=TWO, h=3.0, top=LEG1), dict(cols=[(ax0, axw)], h=0.82 * nm + 0.2, top=LEG1)]
+    if extra:
+        rows.append(extra['row'])
     fig, G = new_fig(rows)
     Sb = R['ladder_series'][before]; Sa = R['ladder_series'][after_]
     for j, ax in enumerate(AX):
@@ -377,6 +380,8 @@ def before_after(name, before, after_, windows, metrics, extra_log=False):
     fig.text((ax0 + axw * 1.04) / fig._W, G[1]['band'], 'Trước → sau (thay đổi)', ha='left', va='center',
              fontsize=FS_LEG)
     subcap(fig, G[1], 0, 'c) Chỉ tiêu sau hiệu chỉnh so với trước', xc=FW / 2)
+    if extra:
+        extra['draw'](fig, G[2])
     finish(fig, name)
 
 
