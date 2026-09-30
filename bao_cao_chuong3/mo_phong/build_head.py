@@ -1,6 +1,7 @@
 """Dung file Word phan 3.1.3 - het Chuong 3 tu ket qua mo phong va log A."""
 import sys, pickle, os
 import numpy as np
+from PIL import Image
 sys.path.insert(0, '.')
 import gsim
 import common as C
@@ -54,13 +55,20 @@ SHORT = {'ban_dau': 'Ban đầu', 'cascade': 'Sau hiệu chỉnh nối tầng', 
 ORDER = [n for n, _ in gsim.LADDER]
 
 D = Doc(TEMPLATE)
-
-
-WIDE = {5, 21, 22, 19}
+# chan trang cua mau goc co mot ky tu "`" lac; bo di trong tep chuong
+from docx.oxml.ns import qn as _qn
+for _rel in D.d.part.rels.values():
+    if _rel.reltype.endswith('/footer'):
+        for _t in _rel.target_part.element.iter(_qn('w:t')):
+            if _t.text and _t.text.strip() == '`':
+                _t.text = ''
 
 
 def fig(n, name, cap):
-    D.figure(os.path.join(FIG, name + '.png'), f'Hình 3.{n}. {cap}', width_cm=15.0 if n in WIDE else 13.2)
+    """Chen hinh dung kich thuoc that (anh 600 dpi ve san theo cm), khong co gian."""
+    p = os.path.join(FIG, name + '.png')
+    w_cm = Image.open(p).size[0] / 600 * 2.54
+    D.figure(p, f'Hình 3.{n}. {cap}', width_cm=min(w_cm, 16.0))
 
 
 def ba_rows(before, after, keys):

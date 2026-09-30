@@ -1,544 +1,862 @@
-"""Ve toan bo hinh cho Chuong 3 (PNG 300 dpi, rong 16 cm)."""
-import sys, pickle, os
+"""Ve lai toan bo hinh Chuong 3 theo mot chuan chung.
+
+Chuan trinh bay:
+- Bo cuc theo cm, hinh chen vao Word dung kich thuoc that (rong <= 15,8 cm), 600 dpi.
+- Liberation Serif (cung kich thuoc chu Times New Roman): vach chia 10 pt, ten truc 11 pt, chu giai 10 pt,
+  ten hinh con 11 pt, dat can giua ngay duoi tung hinh con.
+- Yaw: ho mau xanh lam, Pitch: ho mau cam (nhat / chinh / dam).
+- Truoc hieu chinh: net dut den; sau hieu chinh va phuong an chon: net lien mau chinh, day nhat.
+  Gia tri thap hon: mau nhat, net dut; gia tri cao hon: mau dam, net cham gach; cac duong mong ve de len
+  duong day de khong bi che khi trung nhau. So do (log A): cham tron rong mau den.
+- Chu giai luon nam trong dai rieng phia tren hinh con, khong dat trong vung du lieu.
+"""
+import sys, pickle, os, io
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib import ticker as mt
+from matplotlib import transforms as mtr
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
+from matplotlib.legend_handler import HandlerTuple
+from PIL import Image
 sys.path.insert(0, '.')
 import gsim
 import common as C
 
-OUT = 'figs'
+OUT = sys.argv[1] if len(sys.argv) > 1 else 'figs'
 os.makedirs(OUT, exist_ok=True)
 R = pickle.load(open('results.pkl', 'rb'))
 R2 = pickle.load(open('results2.pkl', 'rb'))
 E = C.exc(); T = E['T']; wd = E['wd']; L = E['log']; tu = L['tu']
-
-plt.rcParams.update({
-    'font.family': 'Liberation Serif', 'font.size': 9, 'axes.titlesize': 9,
-    'axes.labelsize': 9, 'legend.fontsize': 8, 'xtick.labelsize': 8, 'ytick.labelsize': 8,
-    'axes.spines.top': False, 'axes.spines.right': False, 'axes.linewidth': 0.6,
-    'axes.edgecolor': '#52514e', 'xtick.color': '#52514e', 'ytick.color': '#52514e',
-    'axes.grid': True, 'grid.color': '#e4e3df', 'grid.linewidth': 0.5,
-    'legend.frameon': True, 'legend.framealpha': 0.88, 'legend.edgecolor': 'none', 'legend.fancybox': False, 'lines.linewidth': 1.0, 'savefig.dpi': 300,
-    'axes.titleweight': 'normal', 'axes.titlelocation': 'left'})
-
-COL = {'yaw': '#2a78d6', 'pitch': '#eb6834'}
-LIGHT = {'yaw': ['#a9c8ee', '#6fa3e3', '#2a78d6', '#1b4f8f'], 'pitch': ['#f6bda4', '#f0915f', '#eb6834', '#a8431b']}
-GREY = '#8a8985'
-INK = '#0b0b0b'
+AX = gsim.AX
 AXN = {'yaw': 'Yaw', 'pitch': 'Pitch'}
-CM = 1 / 2.54
-W = 16 * CM
-NAMES = {'ban_dau': 'Ban đầu', 'cascade': 'Hiệu chỉnh nối tầng', 'bu_imu2': 'Bù IMU2',
-         'ngoai_suy': 'Ngoại suy bù trễ', 'gioi_han': 'Giới hạn động', 'dao_chieu': 'Đảo chiều, dừng',
-         'tao_dang': 'Tạo dạng lệnh', 'hoan_thien': 'Hoàn thiện'}
 ORDER = [n for n, _ in gsim.LADDER]
 
+# ============================================================================ chuan chung
+CM = 1 / 2.54
+FW = 15.8                      # chieu rong thiet ke (cm), vua be rong trang 16 cm
+LM, GC, RM = 1.75, 1.95, 0.3   # le trai, khoang giua hai cot, le phai (cm)
+PW = (FW - LM - GC - RM) / 2   # be rong mot hinh con (cm)
+TWO = [(LM, PW), (LM + PW + GC, PW)]
+ONE = [(LM, FW - LM - RM)]
+BOT = 1.22                     # dai vach chia + ten truc x
+BOT2 = 1.62                    # vach chia hai dong + ten truc x
+BOT0 = 0.72                    # chi co vach chia
+CAPH = 0.62                    # dong ten hinh con
+GAPR = 0.28                    # khoang cach giua hai hang
+LEG1, LEG2 = 0.62, 1.1         # dai chu giai mot / hai dong
+YLAB = 1.32                    # khoang cach ten truc y toi truc (cm)
+FS_TICK, FS_LAB, FS_LEG, FS_CAP, FS_ANN = 10, 11, 10, 11, 10
 
-def vn(x, nd=2):
-    return f'{x:.{nd}f}'.replace('.', ',')
+PAL = {'yaw': dict(light='#4a90e2', main='#1a5bb5', dark='#0a2a5e'),
+       'pitch': dict(light='#f0883a', main='#c94a10', dark='#6b2305')}
+INK = '#000000'
+SHADE = '#efefef'              # to nen cac doan le cua bai thu
+HILITE = '#e3e3e3'             # nen cua phuong an chon tren bieu do
+DASH = (0, (5.0, 2.4))
+DASHDOT = (0, (8.0, 2.2, 1.8, 2.2))
+DOT = (0, (1.3, 1.9))
+LW_CH, LW_ALT, LW_BEF = 2.2, 1.5, 1.4
+LW_SEL, LW_OPT = 2.7, 1.3   # khao sat: duong chon day, phuong an khac mong ve de len tren
+SINV = 's$^{\\mathrm{-1}}$'    # don vi s^-1 (chu dung)
+
+BEFORE = dict(color=INK, lw=LW_BEF, ls=DASH)
+MEAS = dict(ls='none', marker='o', ms=3.4, mfc='white', mec=INK, mew=0.9)
+REF = dict(color='#4d4d4d', lw=1.0, ls=DOT)
+Z = {'chosen': 3, 'low': 4, 'high': 5}    # duong mong ve de len duong day
 
 
-def _comma(v, p):
-    t = ('%.6f' % v).rstrip('0').rstrip('.')
-    return t.replace('-', '−').replace('.', ',')
+def after(ax):
+    return dict(color=PAL[ax]['main'], lw=LW_CH, ls='-')
 
 
-def save(fig, name):
-    from matplotlib.ticker import FuncFormatter, ScalarFormatter
-    for a in fig.axes:
-        for axis, sc in ((a.yaxis, a.get_yscale()), (a.xaxis, a.get_xscale())):
-            if sc == 'linear' and isinstance(axis.get_major_formatter(), ScalarFormatter):
-                axis.set_major_formatter(FuncFormatter(_comma))
-    fig.savefig(os.path.join(OUT, name + '.png'), bbox_inches='tight', facecolor='white')
-    plt.close(fig)
+def opt(ax, kind):
+    """Kieu duong cho phuong an khao sat: 'low', 'chosen', 'high'."""
+    return {'low': dict(color=PAL[ax]['light'], lw=LW_OPT, ls=DASH),
+            'chosen': dict(color=PAL[ax]['main'], lw=LW_SEL, ls='-'),
+            'high': dict(color=PAL[ax]['dark'], lw=LW_OPT, ls=DASHDOT)}[kind]
 
 
-def tag(ax, s):
-    ax.set_title(s, loc='left', fontsize=9)
+plt.rcParams.update({
+    'font.family': 'Liberation Serif', 'font.size': FS_LAB,
+    'mathtext.fontset': 'custom', 'mathtext.rm': 'Liberation Serif', 'mathtext.it': 'Liberation Serif:italic',
+    'mathtext.bf': 'Liberation Serif:bold', 'mathtext.sf': 'Liberation Serif', 'mathtext.cal': 'Liberation Serif:italic',
+    'mathtext.tt': 'Liberation Mono', 'mathtext.default': 'it',
+    'axes.labelsize': FS_LAB, 'xtick.labelsize': FS_TICK, 'ytick.labelsize': FS_TICK, 'legend.fontsize': FS_LEG,
+    'text.color': INK, 'axes.labelcolor': INK, 'xtick.labelcolor': INK, 'ytick.labelcolor': INK,
+    'axes.edgecolor': '#333333', 'xtick.color': '#333333', 'ytick.color': '#333333',
+    'axes.linewidth': 0.8, 'xtick.major.width': 0.8, 'ytick.major.width': 0.8,
+    'xtick.major.size': 3.2, 'ytick.major.size': 3.2, 'xtick.major.pad': 2.6, 'ytick.major.pad': 2.6,
+    'xtick.minor.visible': False, 'ytick.minor.visible': False,
+    'axes.spines.top': False, 'axes.spines.right': False,
+    'axes.grid': True, 'grid.color': '#d4d4d4', 'grid.linewidth': 0.6, 'axes.axisbelow': True,
+    'axes.labelpad': 3.0, 'axes.unicode_minus': True, 'axes.facecolor': 'white', 'figure.facecolor': 'white',
+    'legend.frameon': False, 'legend.handlelength': 2.8, 'legend.handletextpad': 0.5,
+    'legend.columnspacing': 1.6, 'legend.borderaxespad': 0.0, 'legend.borderpad': 0.1, 'legend.labelspacing': 0.35,
+    'lines.linewidth': LW_ALT, 'lines.scale_dashes': False, 'lines.dash_capstyle': 'butt',
+    'lines.solid_capstyle': 'round', 'lines.solid_joinstyle': 'round',
+    'hatch.linewidth': 0.9, 'patch.linewidth': 0.8, 'savefig.dpi': 600,
+})
 
 
-def seg_shade(ax, labels=True, ymax=None):
-    for i, (a, b, lab) in enumerate(C.SEG):
+def num(v, nd):
+    return f'{v:.{nd}f}'.replace('-', '−').replace('.', ',')
+
+
+class Comma(mt.ScalarFormatter):
+    """Vach chia dung dau phay thap phan."""
+
+    def __init__(self):
+        super().__init__(useOffset=False)
+
+    def __call__(self, x, pos=None):
+        return super().__call__(x, pos).replace('.', ',')
+
+
+# ---------------------------------------------------------------------------- bo cuc theo cm
+def new_fig(rows, width=FW):
+    """rows: moi hang {cols:[(x0,w)], h, top, bot, cap, gap} (cm). Tra ve fig va thong tin tung hang."""
+    H = 0.0
+    for i, r in enumerate(rows):
+        H += r.get('top', 0) + r['h'] + r.get('bot', BOT) + r.get('cap', CAPH)
+        if i < len(rows) - 1:
+            H += r.get('gap', GAPR)
+    fig = plt.figure(figsize=(width * CM, H * CM))
+    y = H; geo = []
+    for i, r in enumerate(rows):
+        top = r.get('top', 0); h = r['h']; bot = r.get('bot', BOT); cap = r.get('cap', CAPH)
+        yt = y - top; yb = yt - h
+        axs = []
+        for x0, w in r['cols']:
+            a = fig.add_axes([x0 / width, yb / H, w / width, h / H])
+            a._wcm = w; a._hcm = h
+            axs.append(a)
+        geo.append(dict(axes=axs, cols=r['cols'], band=(y - top / 2) / H, band_top=y / H, cap=(yb - bot) / H,
+                        yt=yt / H, yb=yb / H))
+        y = yb - bot - cap - r.get('gap', GAPR)
+    fig._W = width; fig._H = H
+    return fig, geo
+
+
+def band_y(fig, g, offset_cm):
+    """Tung do (phan so hinh) cach mep tren dai chu giai offset_cm."""
+    return (g['band_top'] * fig._H - offset_cm) / fig._H
+
+
+def subcap(fig, g, j, text, xc=None):
+    """Ten hinh con can giua duoi hinh con j (hoac tai hoanh do xc, cm)."""
+    if xc is None:
+        x0, w = g['cols'][j]; xc = x0 + w / 2
+    fig.text(xc / fig._W, g['cap'], text, ha='center', va='top', fontsize=FS_CAP)
+
+
+def band_legend(fig, g, handles, labels, ncol=None, cx=None, y=None, hl=None, **kw):
+    """Chu giai dat trong dai phia tren hang g, can giua tai cx (cm); tu dich vao trong khung hinh."""
+    if cx is None:
+        x0 = g['cols'][0][0]; x1 = g['cols'][-1][0] + g['cols'][-1][1]
+        cx = (x0 + x1) / 2
+    yy = g['band'] if y is None else y
+    lg = fig.legend(handles, labels, loc='center', bbox_to_anchor=(cx / fig._W, yy),
+                    ncol=ncol or len(labels), handler_map={tuple: HandlerTuple(ndivide=None, pad=0.3)},
+                    handlelength=hl or plt.rcParams['legend.handlelength'], **kw)
+    fig.canvas.draw()
+    bb = lg.get_window_extent(fig.canvas.get_renderer())
+    px_cm = fig.bbox.width / fig._W
+    lo, hi = bb.x0 / px_cm, bb.x1 / px_cm
+    shift = 0.0
+    if hi > fig._W - 0.05:
+        shift = fig._W - 0.05 - hi
+    elif lo < 0.05:
+        shift = 0.05 - lo
+    if shift:
+        lg.set_bbox_to_anchor(((cx + shift) / fig._W, yy), transform=fig.transFigure)
+    return lg
+
+
+def tup(styles):
+    return tuple(Line2D([], [], **s) for s in styles)
+
+
+def key_patches(chosen=True):
+    h = [Patch(facecolor=PAL['yaw']['main'], edgecolor='none'), Patch(facecolor=PAL['pitch']['main'], edgecolor='none')]
+    l = ['Trục Yaw', 'Trục Pitch']
+    if chosen:
+        h.append(Patch(facecolor=HILITE, edgecolor='#9a9a9a', lw=0.6)); l.append('Phương án chọn')
+    return h, l
+
+
+def hilite(a, x, horiz=False, width=0.92):
+    """Danh dau nhom duoc chon: nen xam va nhan vach chia in dam."""
+    if horiz:
+        a.axhspan(x - width / 2, x + width / 2, color=HILITE, lw=0, zorder=0)
+    else:
+        a.axvspan(x - width / 2, x + width / 2, color=HILITE, lw=0, zorder=0)
+    (a.get_yticklabels() if horiz else a.get_xticklabels())[x].set_fontweight('bold')
+
+
+def bar_axes(a, horiz=False):
+    a.grid(axis='y' if horiz else 'x', visible=False)
+    a.tick_params(axis='y' if horiz else 'x', length=0)
+
+
+def time_axes(a, nb=5):
+    a.yaxis.set_major_locator(mt.MaxNLocator(nb, steps=[1, 2, 2.5, 5, 10]))
+
+
+def seg_shade(a):
+    for i, (s0, s1, _) in enumerate(C.SEG):
         if i % 2 == 0:
-            ax.axvspan(a, b, color='#f1f0ec', zorder=0, lw=0)
-        if labels:
-            ax.text((a + b) / 2, 0.02, f'Đoạn {i + 1}', transform=ax.get_xaxis_transform(),
-                    ha='center', va='bottom', fontsize=7, color='#52514e')
+            a.axvspan(s0, s1, color=SHADE, lw=0, zorder=0)
 
 
-def win(r_series, ax, a, b, key='e'):
-    m = (T >= a) & (T < b)
-    return T[m], r_series[ax][key][m]
+def seg_header(a, dy=0.06):
+    for i, (s0, s1, _) in enumerate(C.SEG):
+        a.text((s0 + s1) / 2, 1.0 + dy / a._hcm, f'Đoạn {i + 1}', transform=a.get_xaxis_transform(),
+               ha='center', va='bottom', fontsize=FS_ANN)
 
 
-# -------------------------------------------------------------------------- khuon hinh "truoc / sau"
-def before_after(name, before, after, windows, metrics, labels, extra_log=False, units='°'):
-    """(a) Yaw, (b) Pitch: e(t) truoc (xam, net dut) / sau (mau truc); (c) chi tieu chuan hoa."""
-    fig = plt.figure(figsize=(W, 8.0 * CM))
-    gs = fig.add_gridspec(2, 2, height_ratios=[1, 1.05], hspace=0.7, wspace=0.28)
-    Sb = R['ladder_series'][before]; Sa = R['ladder_series'][after]
-    for j, ax in enumerate(gsim.AX):
-        a_ = fig.add_subplot(gs[0, j])
-        a, b = windows[ax]
-        t, eb = win(Sb, ax, a, b); _, ea = win(Sa, ax, a, b)
-        a_.plot(t, eb, color=GREY, lw=0.8, ls='--', label='Trước: ' + NAMES[before])
-        a_.plot(t, ea, color=COL[ax], lw=1.1, label='Sau: ' + NAMES[after])
+def symlim(a, *arrs, k=1.08):
+    m = max(np.abs(x).max() for x in arrs) * k
+    a.set_ylim(-m, m)
+
+
+def best_window(ser, alts, chosen, length, segs, step=0.1):
+    """Cua so dai length (s) trong cac doan segs de moi phuong an deu khac phuong an chon ro nhat."""
+    best = (-1, None)
+    for s0, s1 in segs:
+        t = s0
+        while t + length <= s1 + 1e-9:
+            m = (T >= t) & (T < t + length)
+            sc = min(np.sqrt(np.mean((ser[k][m] - ser[chosen][m]) ** 2)) for k in alts)
+            if sc > best[0]:
+                best = (sc, t)
+            t += step
+    return best[1], best[1] + length
+
+
+SEG_AX = {'yaw': [C.SEG[i][:2] for i in (0, 2, 4)], 'pitch': [C.SEG[i][:2] for i in (1, 3)]}
+
+
+# ---------------------------------------------------------------------------- kiem tra va xuat hinh
+def _texts(fig, r):
+    out = []
+    for a in fig.axes:
+        for axis in (a.xaxis, a.yaxis):
+            for tk in axis._update_ticks():
+                for lab in (tk.label1, tk.label2):
+                    if lab.get_visible() and lab.get_text().strip():
+                        out.append(('tick', lab, lab.get_window_extent(r)))
+            if axis.label.get_text().strip():
+                out.append(('label', axis.label, axis.label.get_window_extent(r)))
+        for t in a.texts:
+            if t.get_visible() and t.get_text().strip():
+                out.append(('atext', t, t.get_window_extent(r)))
+    for t in fig.texts:
+        if t.get_text().strip():
+            out.append(('ftext', t, t.get_window_extent(r)))
+    for lg in fig.legends + [a.get_legend() for a in fig.axes if a.get_legend()]:
+        out.append(('legend', lg, lg.get_window_extent(r)))
+    return out
+
+
+def _name(t):
+    return t.get_text() if hasattr(t, 'get_text') else 'legend'
+
+
+def check(fig, name):
+    """Bao cao chu chong chu, chu giai / chu nam trong vung ve, chu ra ngoai khung hinh."""
+    fig.canvas.draw()
+    r = fig.canvas.get_renderer()
+    items = _texts(fig, r)
+    issues = []
+    for i in range(len(items)):
+        for j in range(i + 1, len(items)):
+            (ka, ta, A), (kb, tb, B) = items[i], items[j]
+            ix = min(A.x1, B.x1) - max(A.x0, B.x0); iy = min(A.y1, B.y1) - max(A.y0, B.y0)
+            if ix > 0.5 and iy > 0.5:
+                issues.append(f'chong: [{ka}] {_name(ta)!r} / [{kb}] {_name(tb)!r}')
+    for kind, t, bb in items:
+        if kind in ('legend', 'ftext', 'atext'):
+            for a in fig.axes:
+                ab = a.get_window_extent(r)
+                ix = min(ab.x1, bb.x1) - max(ab.x0, bb.x0); iy = min(ab.y1, bb.y1) - max(ab.y0, bb.y0)
+                if ix > 0.5 and iy > 0.5:
+                    issues.append(f'{kind} nam trong vung ve: {_name(t)!r}')
+    fb = fig.bbox
+    for kind, t, bb in items:
+        if bb.x0 < fb.x0 - 1 or bb.x1 > fb.x1 + 1 or bb.y0 < fb.y0 - 1 or bb.y1 > fb.y1 + 1:
+            issues.append(f'ra ngoai khung hinh: [{kind}] {_name(t)!r}')
+    print(f'{name}: {"khong co van de" if not issues else ""}')
+    for s in issues:
+        print('   ', s)
+    return issues
+
+
+def finish(fig, name):
+    for a in fig.axes:
+        for axis, sc in ((a.xaxis, a.get_xscale()), (a.yaxis, a.get_yscale())):
+            if sc == 'linear' and type(axis.get_major_formatter()) is mt.ScalarFormatter:
+                axis.set_major_formatter(Comma())
+        if a.get_ylabel() and hasattr(a, '_wcm'):
+            a.yaxis.set_label_coords(-YLAB / a._wcm, 0.5)
+    check(fig, name)
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=600, bbox_inches='tight', pad_inches=0.04, facecolor='white')
+    plt.close(fig)
+    # bang mau 256 mau, khong khu nhieu: nhe hon ~2,5 lan, sai khac khong nhin thay (PSNR > 55 dB)
+    im = Image.open(buf).convert('RGB').quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    im.save(os.path.join(OUT, name + '.png'), optimize=True, dpi=(600, 600))
+
+
+# ============================================================================ khuon hinh truoc / sau
+MLAB = {'erms': '$e_{\\mathrm{rms}}$ (°)', 'p99': 'Phân vị 99 % $|e|$ (°)', 'emax': '$e_{\\mathrm{max}}$ (°)',
+        'rho': '$\\rho_{\\mathrm{sat}}$ (%)', 'signchg': 'Số lần lệnh\nđổi dấu', 'dumax': 'Bước lệnh\nlớn nhất (°/s)',
+        'du99': 'Phân vị 99 %\nbước lệnh (°/s)'}
+MND = {'erms': 3, 'p99': 3, 'emax': 2, 'rho': 2, 'signchg': 0, 'dumax': 1, 'du99': 2}   # nhu cac bang
+
+
+def _chg(vb, va):
+    d = (va / vb - 1) * 100 if vb else 0.0
+    if abs(d) < 0.05:
+        return '0,0 %'
+    return ('+' if d > 0 else '−') + num(abs(d), 1) + ' %'
+
+
+def before_after(name, before, after_, windows, metrics, extra_log=False):
+    nm = len(metrics)
+    ax0, axw = 3.9, 6.9          # hinh con c): le trai rong cho ten chi tieu, cot gia tri ben phai
+    rows = [dict(cols=TWO, h=3.0, top=LEG1), dict(cols=[(ax0, axw)], h=0.82 * nm + 0.2, top=LEG1)]
+    fig, G = new_fig(rows)
+    Sb = R['ladder_series'][before]; Sa = R['ladder_series'][after_]
+    for j, ax in enumerate(AX):
+        a = G[0]['axes'][j]
+        t0, t1 = windows[ax]
+        m = (T >= t0) & (T < t1)
+        a.plot(T[m], Sa[ax]['e'][m], **after(ax), zorder=3)
+        a.plot(T[m], Sb[ax]['e'][m], **BEFORE, zorder=4)
+        arrs = [Sa[ax]['e'][m], Sb[ax]['e'][m]]
         if extra_log:
-            m = (tu >= a) & (tu < b)
-            a_.plot(tu[m], E['elog'][ax][m], color=INK, lw=0, marker='.', ms=2.2, label='Đo (log A)')
-        a_.set_xlabel('Thời gian (s)'); a_.set_ylabel('Sai lệch góc (°)')
-        tag(a_, f'{"ab"[j]}) Trục {AXN[ax]}')
-        a_.legend(loc='upper center', fontsize=6.8, handlelength=1.8, ncol=2 if extra_log else 1)
-        lim = np.abs(np.r_[eb, ea]).max() * 1.1
-        a_.set_ylim(-lim, lim * (1.9 if not extra_log else 2.1))
-    a3 = fig.add_subplot(gs[1, :])
-    n = len(metrics); y = np.arange(n)
-    Mb = R['ladder'][before]; Ma = R['ladder'][after]
-    for k, ax in enumerate(gsim.AX):
-        vals = []; lab_ = []
-        for mkey in metrics:
-            vb = Mb[ax][mkey]; va = Ma[ax][mkey]
-            vals.append(va / vb * 100 if vb else 100.0)
-            nd = 0 if max(vb, va) >= 20 else (2 if max(vb, va) >= 1 else 3)
-            d = (va / vb - 1) * 100 if vb else 0.0
-            sg = '' if abs(d) < 0.05 else ('+' if d > 0 else '−')
-            lab_.append(f'{vn(vb, nd)} → {vn(va, nd)}  ({sg}{vn(abs(d), 1)} %)')
-        off = -0.19 if ax == 'yaw' else 0.19
-        a3.barh(y + off, vals, height=0.36, color=COL[ax], label=f'Trục {AXN[ax]}', zorder=3)
-        for yi, v, tx in zip(y, vals, lab_):
-            a3.text(max(v, 100) + 3, yi + off, tx, va='center', fontsize=6.8, color='#52514e')
-    a3.axvline(100, color=INK, lw=0.8)
-    a3.set_yticks(y); a3.set_yticklabels(labels); a3.invert_yaxis()
-    a3.set_xlabel('Giá trị sau hiệu chỉnh, % so với trước (đường đứng: trước = 100 %)')
-    xm = max(200, a3.get_xlim()[1] + 85)
-    a3.set_xlim(0, xm)
-    a3.grid(axis='y', visible=False)
-    tag(a3, 'c) Chỉ tiêu sau hiệu chỉnh so với trước (mô phỏng tái hiện)')
-    a3.legend(loc='lower right', fontsize=7)
-    save(fig, name)
+            ml = (tu >= t0) & (tu < t1)
+            a.plot(tu[ml], E['elog'][ax][ml], **MEAS, zorder=5)
+            arrs.append(E['elog'][ax][ml])
+        symlim(a, *arrs); time_axes(a)
+        a.set_xlim(t0, t1)
+        a.set_xlabel('Thời gian (s)'); a.set_ylabel('Sai lệch góc (°)')
+        subcap(fig, G[0], j, f'{"ab"[j]}) Trục {AXN[ax]}')
+    h = [Line2D([], [], **BEFORE), tup([after('yaw'), after('pitch')])]
+    lab = ['Trước hiệu chỉnh', 'Sau hiệu chỉnh']
+    if extra_log:
+        h.append(Line2D([], [], **MEAS)); lab.append('Đo (log A)')
+    band_legend(fig, G[0], h, lab, hl=3.6, numpoints=3)
+    # c) chi tieu sau / truoc (%)
+    a = G[1]['axes'][0]
+    Mb = R['ladder'][before]; Ma = R['ladder'][after_]
+    y = np.arange(nm); vmax = 100.0
+    tr = mtr.blended_transform_factory(a.transAxes, a.transData)
+    for ax in AX:
+        off = -0.2 if ax == 'yaw' else 0.2
+        vals = []
+        for i, key in enumerate(metrics):
+            vb = Mb[ax][key]; va = Ma[ax][key]
+            v = va / vb * 100 if vb else 100.0
+            vals.append(v); vmax = max(vmax, v)
+            nd = MND[key]
+            a.text(1.04, i + off, f'{num(vb, nd)} → {num(va, nd)} ({_chg(vb, va)})', transform=tr,
+                   ha='left', va='center', fontsize=FS_ANN, color=PAL[ax]['dark'])
+        a.barh(y + off, vals, height=0.36, color=PAL[ax]['main'], zorder=3)
+    a.axvline(100, color=INK, lw=1.1, zorder=4)
+    a.set_yticks(y); a.set_yticklabels([MLAB[k] for k in metrics]); a.set_ylim(nm - 0.45, -0.55)
+    xm = max(125.0, np.ceil((vmax + 6) / 25) * 25)
+    a.set_xlim(0, xm); a.xaxis.set_major_locator(mt.MultipleLocator(25))
+    a.set_xlabel('Giá trị sau hiệu chỉnh so với trước (%)')
+    bar_axes(a, horiz=True)
+    hk, lk = key_patches(chosen=False)
+    band_legend(fig, G[1], hk, lk, cx=ax0 + axw / 2)
+    fig.text((ax0 + axw * 1.04) / fig._W, G[1]['band'], 'Trước → sau (thay đổi)', ha='left', va='center',
+             fontsize=FS_LEG)
+    subcap(fig, G[1], 0, 'c) Chỉ tiêu sau hiệu chỉnh so với trước', xc=FW / 2)
+    finish(fig, name)
 
 
-# ========================================================================== Hinh 3.5 kich thich tham chieu
-def fig_excitation():
-    fig, axs = plt.subplots(2, 1, figsize=(W, 8.2 * CM), sharex=True, gridspec_kw=dict(hspace=0.38))
-    a = axs[0]
+# ============================================================================ Hinh 3.5
+def f05():
+    fig, G = new_fig([dict(cols=ONE, h=3.0, top=LEG1 + 0.5), dict(cols=ONE, h=3.0)])
+    a, b = G[0]['axes'][0], G[1]['axes'][0]
     m = (tu > 4) & (tu < 77)
-    a.plot(tu[m], L['by'][m], color=COL['yaw'], lw=0.8, label='Góc hướng khung mang')
-    a.plot(tu[m], L['bp'][m], color=COL['pitch'], lw=0.8, label='Góc gật khung mang')
-    a.plot(tu[m], L['br'][m], color='#1baf7a', lw=0.8, label='Góc liệng khung mang')
-    seg_shade(a)
-    a.set_ylabel('Góc (°)'); tag(a, 'a) Tư thế khung mang đo bởi IMU2 (log A)')
-    a.set_ylim(-34, 40)
-    a.legend(loc='upper center', ncol=3, fontsize=7, bbox_to_anchor=(0.5, 1.0))
-    a = axs[1]
-    for ax in gsim.AX:
-        a.plot(T, wd[ax], color=COL[ax], lw=0.7, label=f'Chiếu lên trục {AXN[ax]}')
-    seg_shade(a, labels=False)
-    a.set_ylabel('Tốc độ góc (°/s)'); a.set_xlabel('Thời gian (s)')
-    tag(a, 'b) Tốc độ góc khung mang dùng làm kích thích tái hiện')
-    a.set_ylim(-260, 300)
-    a.legend(loc='upper center', ncol=2, fontsize=7)
-    a.set_xlim(4, 77)
-    save(fig, 'h3_05_kich_thich')
+    a.plot(tu[m], L['by'][m], color=PAL['yaw']['main'], lw=1.5)
+    a.plot(tu[m], L['bp'][m], color=PAL['pitch']['main'], lw=1.5)
+    for ax in AX:
+        b.plot(T, wd[ax], color=PAL[ax]['main'], lw=1.2)
+    for x in (a, b):
+        seg_shade(x); x.set_xlim(4, 77); x.set_xlabel('Thời gian (s)')
+        x.xaxis.set_major_locator(mt.MultipleLocator(10))
+    seg_header(a)
+    a.set_ylabel('Góc (°)'); b.set_ylabel('Tốc độ góc (°/s)')
+    a.set_ylim(-32, 32); b.set_ylim(-250, 250)
+    a.yaxis.set_major_locator(mt.MultipleLocator(10)); b.yaxis.set_major_locator(mt.MultipleLocator(100))
+    band_legend(fig, G[0], [Line2D([], [], color=PAL[x]['main'], lw=2.2) for x in AX], ['Yaw', 'Pitch'],
+                y=band_y(fig, G[0], LEG1 / 2))
+    subcap(fig, G[0], 0, 'a) Góc khung mang đo bởi IMU2')
+    subcap(fig, G[1], 0, 'b) Tốc độ góc khung mang chiếu lên hai trục')
+    finish(fig, 'h3_05_kich_thich')
 
 
-# ========================================================================== Hinh 3.6 kiem chung mo hinh tai hien
-def fig_validation():
-    fig = plt.figure(figsize=(W, 10.0 * CM))
-    gs = fig.add_gridspec(2, 2, hspace=0.55, wspace=0.28)
+# ============================================================================ Hinh 3.6
+def f06():
+    fig, G = new_fig([dict(cols=TWO, h=3.0, top=LEG1), dict(cols=ONE, h=3.0, top=LEG1, bot=BOT0)])
     S = R['series_final']
     wins = {'yaw': (50.0, 53.0), 'pitch': (64.0, 67.0)}
-    for j, ax in enumerate(gsim.AX):
-        a_ = fig.add_subplot(gs[0, j])
-        a, b = wins[ax]
-        t, e = win(S, ax, a, b)
-        m = (tu >= a) & (tu < b)
-        a_.plot(t, e, color=COL[ax], lw=1.0, label='Mô phỏng tái hiện')
-        a_.plot(tu[m], E['elog'][ax][m], color=INK, lw=0.6, marker='.', ms=2.5, label='Đo (log A)')
-        a_.set_xlabel('Thời gian (s)'); a_.set_ylabel('Sai lệch góc (°)')
-        tag(a_, f'{"ab"[j]}) Trục {AXN[ax]}, {C.SEG[2 if ax == "yaw" else 3][2].split(": ")[1]}')
-        a_.legend(loc='upper right', fontsize=7)
-        a_.set_ylim(-1.3, 1.3)
-    a3 = fig.add_subplot(gs[1, :])
+    for j, ax in enumerate(AX):
+        a = G[0]['axes'][j]
+        t0, t1 = wins[ax]
+        m = (T >= t0) & (T < t1); ml = (tu >= t0) & (tu < t1)
+        a.plot(T[m], S[ax]['e'][m], **after(ax), zorder=3)
+        a.plot(tu[ml], E['elog'][ax][ml], **MEAS, zorder=4)
+        a.set_xlim(t0, t1); symlim(a, S[ax]['e'][m], E['elog'][ax][ml]); time_axes(a)
+        a.set_xlabel('Thời gian (s)'); a.set_ylabel('Sai lệch góc (°)')
+        subcap(fig, G[0], j, f'{"ab"[j]}) Trục {AXN[ax]} (đoạn {3 if ax == "yaw" else 4})')
+    band_legend(fig, G[0], [Line2D([], [], **MEAS), tup([after('yaw'), after('pitch')])],
+                ['Đo (log A)', 'Mô phỏng tái hiện'], hl=3.6, numpoints=3)
+    a = G[1]['axes'][0]
     V = R['val']
-    x = np.arange(len(C.SEG) + 1); wbar = 0.2
-    labs = [f'Đoạn {i + 1}' for i in range(len(C.SEG))] + ['Toàn bản ghi']
-    for k, ax in enumerate(gsim.AX):
+    x = np.arange(len(C.SEG) + 1); wb = 0.19
+    hs, ls = [], []
+    for k, ax in enumerate(AX):
         meas = [d['erms'] for d in V['log_seg'][ax]] + [V['log'][ax]['erms']]
         sim = [d['erms'] for d in V['sim_seg'][ax]] + [V['sim'][ax]['erms']]
-        o = (-1.5 + 2 * k) * wbar
-        a3.bar(x + o, meas, wbar, color=COL[ax], label=f'{AXN[ax]}: đo (log A)', zorder=3)
-        a3.bar(x + o + wbar, sim, wbar, color='white', edgecolor=COL[ax], hatch='////', lw=0.8,
-               label=f'{AXN[ax]}: mô phỏng tái hiện', zorder=3)
-    a3.set_xticks(x); a3.set_xticklabels(labs)
-    a3.set_ylabel('e$_{rms}$ (°)'); a3.grid(axis='x', visible=False)
-    tag(a3, 'c) Sai lệch hiệu dụng theo từng đoạn: đo và mô phỏng tái hiện')
-    a3.legend(ncol=4, fontsize=7, loc='upper center', bbox_to_anchor=(0.5, -0.12))
-    save(fig, 'h3_06_kiem_chung')
+        o = (-1.5 + 2 * k) * wb
+        b1 = a.bar(x + o, meas, wb, color=PAL[ax]['main'], zorder=3)
+        b2 = a.bar(x + o + wb, sim, wb, facecolor='white', edgecolor=PAL[ax]['main'], hatch='////', lw=1.0, zorder=3)
+        hs += [b1, b2]; ls += [f'{AXN[ax]}, đo', f'{AXN[ax]}, mô phỏng']
+    a.set_xticks(x); a.set_xticklabels([f'Đoạn {i + 1}' for i in range(len(C.SEG))] + ['Toàn bài thử'])
+    a.set_ylabel('$e_{\\mathrm{rms}}$ (°)'); bar_axes(a)
+    a.set_xlim(-0.6, len(x) - 0.4)
+    band_legend(fig, G[1], hs, ls, hl=1.6)
+    subcap(fig, G[1], 0, 'c) Sai lệch hiệu dụng theo đoạn')
+    finish(fig, 'h3_06_kiem_chung')
 
 
-# ========================================================================== Hinh 3.7 khao sat cascade
-def fig_cascade_survey():
+# ============================================================================ Hinh 3.7
+def _step_norm(y, Ts, A):
+    return np.where(Ts < 0.5, y - A, y) / A
+
+
+STEP_A = {'yaw': 5.0, 'pitch': 3.0}
+STEP_XLIM = {'yaw': (-50, 700), 'pitch': (-20, 250)}
+
+
+def f07():
     cas = R['cascade']; Ts = R['Ts']; Tk = R['Tk']
-    fig = plt.figure(figsize=(W, 8.6 * CM))
-    gs = fig.add_gridspec(2, 2, hspace=0.66, wspace=0.3)
-    A = {'yaw': 5.0, 'pitch': 3.0}
-    chosen = {'yaw': 9.5, 'pitch': 38.0}
-    for j, ax in enumerate(gsim.AX):
-        a_ = fig.add_subplot(gs[0, j])
-        for i, sm in enumerate(cas[ax]['Kpt']):
-            v = sm['v']; ch = v == chosen[ax]
-            a_.plot((Ts - 0.5) * 1e3, np.where(Ts < 0.5, sm['y'] - A[ax], sm['y']) / A[ax], color=LIGHT[ax][[0, 2, 3][i]] if not ch else COL[ax],
-                    lw=1.6 if ch else 0.9, label=f'K$_{{pθ}}$ = {vn(v, 1)} 1/s' + (' (chọn)' if ch else ''))
-        a_.axhline(1, color=GREY, lw=0.6, ls=':')
-        a_.set_xlim(-50, 700); a_.set_xlabel('Thời gian sau bậc (ms)'); a_.set_ylabel('θ / biên độ bậc')
-        tag(a_, f'{"ab"[j]}) Bậc thang trục {AXN[ax]} ({vn(A[ax], 0)}°)')
-        a_.legend(loc='lower right', fontsize=7)
-    a3 = fig.add_subplot(gs[1, 0])
-    for ax in gsim.AX:
-        for i, sm in enumerate(cas[ax]['Kiw']):
-            if sm['v'] not in (0.0, 1.0 if ax == 'yaw' else 0.5):
-                continue
+    fig, G = new_fig([dict(cols=TWO, h=3.0, top=LEG2), dict(cols=TWO, h=3.0, top=LEG2)])
+    for j, ax in enumerate(AX):
+        a = G[0]['axes'][j]
+        hs = {}
+        for sm, kd in zip(cas[ax]['Kpt'], ['low', 'chosen', 'high']):
+            ln, = a.plot((Ts - 0.5) * 1e3, _step_norm(sm['y'], Ts, STEP_A[ax]), **opt(ax, kd), zorder=Z[kd])
+            v = sm['v']
+            hs[kd] = (ln, f'$K_{{p\\theta}}$ = {num(v, 1 if v % 1 else 0)} {SINV}' + (' (chọn)' if kd == 'chosen' else ''))
+        a.axhline(1, **REF, zorder=2)
+        a.set_xlim(*STEP_XLIM[ax]); a.set_ylim(-0.05, 1.25)
+        a.set_xlabel('Thời gian sau bậc (ms)'); a.set_ylabel('$\\theta/\\theta_{\\mathrm{đặt}}$')
+        order = ['low', 'high', 'chosen']
+        band_legend(fig, G[0], [hs[k][0] for k in order], [hs[k][1] for k in order], ncol=2,
+                    cx=G[0]['cols'][j][0] + PW / 2, columnspacing=1.2)
+        subcap(fig, G[0], j, f'{"ab"[j]}) Trục {AXN[ax]}, bậc {num(STEP_A[ax], 0)}°')
+    # c) khu sai lech do tac dong khong doi
+    a = G[1]['axes'][0]
+    for ax in AX:
+        for sm in cas[ax]['Kiw']:
             ch = sm['v'] == gsim.GAINS_FINAL[ax]['Kiw']
-            a3.plot(Tk - 1.0, sm['y'], color=COL[ax] if ch else LIGHT[ax][0], lw=1.4 if ch else 0.9,
-                    ls='-' if ch else '--',
-                    label=f'{AXN[ax]}: K$_{{iω}}$ = {vn(sm["v"], 1)}' + (' (chọn)' if ch else ''))
-    a3.set_xlim(-0.2, 4.0); a3.set_xlabel('Thời gian từ khi khung quay đều 8 °/s (s)')
-    a3.set_ylabel('Sai lệch góc (°)'); tag(a3, 'c) Khử sai lệch do tác động không đổi')
-    a3.legend(fontsize=7, loc='lower right')
-    a4 = fig.add_subplot(gs[1, 1])
+            if sm['v'] != 0.0 and not ch:
+                continue
+            kd = 'chosen' if ch else 'low'
+            a.plot(Tk - 1.0, sm['y'], **opt(ax, kd), zorder=Z[kd])
+    a.axhline(0, **REF, zorder=2)
+    a.set_xlim(-0.2, 4.0); time_axes(a)
+    a.set_xlabel('Thời gian (s)'); a.set_ylabel('Sai lệch góc (°)')
+    band_legend(fig, G[1], [tup([opt('yaw', 'low'), opt('pitch', 'low')]), tup([opt('yaw', 'chosen'), opt('pitch', 'chosen')])],
+                ['$K_{i\\omega}$ = 0', f'$K_{{i\\omega}}$ = 1,0 / 0,5 {SINV} (chọn)'], ncol=1, cx=TWO[0][0] + PW / 2, hl=3.6)
+    subcap(fig, G[1], 0, 'c) Khung mang quay đều 8 °/s')
+    # d) e_rms bai thu tham chieu theo Kpt
+    a = G[1]['axes'][1]
     xs = np.arange(3)
-    for k, ax in enumerate(gsim.AX):
-        vals = [sm['bt3_erms'] for sm in cas[ax]['Kpt']]
-        oss = [sm['OS'] for sm in cas[ax]['Kpt']]
-        o = -0.2 + 0.4 * k
-        cols = [COL[ax] if sm['v'] == chosen[ax] else LIGHT[ax][0] for sm in cas[ax]['Kpt']]
-        a4.bar(xs + o, vals, 0.38, color=cols, zorder=3)
-        for xi, v, os_, sm in zip(xs, vals, oss, cas[ax]['Kpt']):
-            a4.text(xi + o, v + 0.1, f'{vn(os_, 1)}%', ha='center', fontsize=6.3, color='#52514e')
-    a4.set_xticks(xs); a4.set_xticklabels(['6 / 20 1/s', '9,5 / 38 1/s\n(chọn)', '13 / 50 1/s'], fontsize=7)
-    a4.set_ylim(0, 6.9); a4.set_ylabel('e$_{rms}$ bài thử tham chiếu (°)')
-    a4.grid(axis='x', visible=False)
-    a4.legend(handles=[Patch(color=COL['yaw'], label='Yaw'), Patch(color=COL['pitch'], label='Pitch')],
-              fontsize=7, loc='upper right')
-    tag(a4, 'd) Chọn K$_{pθ}$ Yaw / Pitch (nhãn: độ vọt lố)')
-    save(fig, 'h3_07_khao_sat_cascade')
+    for k, ax in enumerate(AX):
+        a.bar(xs - 0.19 + 0.38 * k, [sm['bt3_erms'] for sm in cas[ax]['Kpt']], 0.36, color=PAL[ax]['main'], zorder=3)
+    a.set_xticks(xs)
+    a.set_xticklabels([f'{num(cas["yaw"]["Kpt"][i]["v"], 1 if cas["yaw"]["Kpt"][i]["v"] % 1 else 0)} / '
+                       f'{num(cas["pitch"]["Kpt"][i]["v"], 0)}' for i in range(3)])
+    hilite(a, 1)
+    a.set_xlim(-0.55, 2.55)
+    a.set_xlabel(f'$K_{{p\\theta}}$ Yaw / Pitch ({SINV})'); a.set_ylabel('$e_{\\mathrm{rms}}$ (°)'); bar_axes(a)
+    hk, lk = key_patches()
+    band_legend(fig, G[1], hk, lk, ncol=2, cx=TWO[1][0] + PW / 2, hl=1.6)
+    subcap(fig, G[1], 1, 'd) Bài thử tham chiếu, chưa bù')
+    finish(fig, 'h3_07_khao_sat_cascade')
 
 
-# ========================================================================== Hinh 3.8 truoc/sau cascade
-def fig_cascade_real():
-    fig = plt.figure(figsize=(W, 10.0 * CM))
-    gs = fig.add_gridspec(2, 2, hspace=0.58, wspace=0.28)
+# ============================================================================ Hinh 3.8
+def f08():
     SL = R['step_ladder']; Ts = R['Ts']
-    A = {'yaw': 5.0, 'pitch': 3.0}
-    for j, ax in enumerate(gsim.AX):
-        a_ = fig.add_subplot(gs[0, j])
-        a_.plot((Ts - 0.5) * 1e3, np.where(Ts < 0.5, SL['ban_dau'][ax]['y'] - A[ax], SL['ban_dau'][ax]['y']) / A[ax], color=GREY, ls='--', lw=0.9, label='Trước: Ban đầu')
-        a_.plot((Ts - 0.5) * 1e3, np.where(Ts < 0.5, SL['cascade'][ax]['y'] - A[ax], SL['cascade'][ax]['y']) / A[ax], color=COL[ax], lw=1.2, label='Sau: Hiệu chỉnh nối tầng')
-        a_.axhline(1, color=GREY, lw=0.6, ls=':')
-        a_.set_xlim(-50, 800); a_.set_xlabel('Thời gian sau bậc (ms)'); a_.set_ylabel('θ / biên độ bậc')
-        tag(a_, f'{"ab"[j]}) Bậc thang trục {AXN[ax]}')
-        a_.legend(loc='lower right', fontsize=7)
-    for j, ax in enumerate(gsim.AX):
-        a_ = fig.add_subplot(gs[1, j])
-        a, b = (14.0, 20.0) if ax == 'yaw' else (36.0, 39.0)
-        t, eb = win(R['ladder_series']['ban_dau'], ax, a, b); _, ea = win(R['ladder_series']['cascade'], ax, a, b)
-        a_.plot(t, eb, color=GREY, ls='--', lw=0.8, label='Trước')
-        a_.plot(t, ea, color=COL[ax], lw=1.0, label='Sau')
-        a_.set_xlabel('Thời gian (s)'); a_.set_ylabel('Sai lệch góc (°)')
-        tag(a_, f'{"cd"[j]}) Bài thử tham chiếu, trục {AXN[ax]}')
-        a_.legend(loc='upper right', fontsize=7)
-    save(fig, 'h3_08_cascade_truoc_sau')
+    fig, G = new_fig([dict(cols=TWO, h=3.0, top=LEG1), dict(cols=TWO, h=3.0)])
+    for j, ax in enumerate(AX):
+        a = G[0]['axes'][j]
+        a.plot((Ts - 0.5) * 1e3, _step_norm(SL['cascade'][ax]['y'], Ts, STEP_A[ax]), **after(ax), zorder=3)
+        a.plot((Ts - 0.5) * 1e3, _step_norm(SL['ban_dau'][ax]['y'], Ts, STEP_A[ax]), **BEFORE, zorder=4)
+        a.axhline(1, **REF, zorder=2)
+        a.set_xlim(*STEP_XLIM[ax]); a.set_ylim(-0.05, 1.2)
+        a.set_xlabel('Thời gian sau bậc (ms)'); a.set_ylabel('$\\theta/\\theta_{\\mathrm{đặt}}$')
+        subcap(fig, G[0], j, f'{"ab"[j]}) Trục {AXN[ax]}, bậc {num(STEP_A[ax], 0)}°')
+    for j, ax in enumerate(AX):
+        a = G[1]['axes'][j]
+        t0, t1 = (14.0, 20.0) if ax == 'yaw' else (36.0, 39.0)
+        m = (T >= t0) & (T < t1)
+        eb = R['ladder_series']['ban_dau'][ax]['e'][m]; ea = R['ladder_series']['cascade'][ax]['e'][m]
+        a.plot(T[m], ea, **after(ax), zorder=3)
+        a.plot(T[m], eb, **BEFORE, zorder=4)
+        symlim(a, ea, eb); a.set_xlim(t0, t1); time_axes(a)
+        a.set_xlabel('Thời gian (s)'); a.set_ylabel('Sai lệch góc (°)')
+        subcap(fig, G[1], j, f'{"cd"[j]}) Trục {AXN[ax]}, bài thử tham chiếu')
+    band_legend(fig, G[0], [Line2D([], [], **BEFORE), tup([after('yaw'), after('pitch')])],
+                ['Trước hiệu chỉnh', 'Sau hiệu chỉnh'], hl=3.6)
+    finish(fig, 'h3_08_cascade_truoc_sau')
 
 
-# ========================================================================== Hinh 3.9 khao sat he so bu
-def fig_ff_survey():
-    ffs = R['ff_survey']
-    fig = plt.figure(figsize=(W, 8.6 * CM))
-    gs = fig.add_gridspec(2, 2, hspace=0.66, wspace=0.3)
-    wins = {'yaw': (72.0, 74.5), 'pitch': (64.0, 66.0)}
-    for j, ax in enumerate(gsim.AX):
-        a_ = fig.add_subplot(gs[0, j])
-        a, b = wins[ax]
-        for i, (lab, out) in enumerate(ffs[1:]):
-            t, e = win(out['series'], ax, a, b)
-            ch = lab.startswith('k(v)')
-            a_.plot(t, e, color=COL[ax] if ch else LIGHT[ax][i if i < 3 else 0], lw=1.3 if ch else 0.8,
-                    ls='-' if ch else '--', label=lab + (' (chọn)' if ch else ''))
-        a_.set_xlabel('Thời gian (s)'); a_.set_ylabel('Sai lệch góc (°)')
-        tag(a_, f'{"ab"[j]}) Trục {AXN[ax]}')
-        a_.legend(fontsize=6.5, loc='upper right', ncol=2)
-    a3 = fig.add_subplot(gs[1, 0]); a4 = fig.add_subplot(gs[1, 1])
-    labs = [l for l, _ in ffs[1:]]
-    x = np.arange(len(labs))
-    for k, ax in enumerate(gsim.AX):
-        o = -0.2 + 0.4 * k
-        a3.bar(x + o, [out[ax]['erms'] for _, out in ffs[1:]], 0.38,
-               color=[COL[ax] if l.startswith('k(v)') else LIGHT[ax][0] for l in labs], zorder=3)
-        a4.bar(x + o, [out[ax]['uff_hold'] for _, out in ffs[1:]], 0.38,
-               color=[COL[ax] if l.startswith('k(v)') else LIGHT[ax][0] for l in labs], zorder=3)
-    for a_, yl, tt in [(a3, 'e$_{rms}$ (°)', 'c) Chỉ tiêu chính: sai lệch hiệu dụng'),
-                       (a4, 'Độ lệch chuẩn u$_{ff}$ khi đứng yên (°/s)', 'd) Ràng buộc: nhiễu IMU2 đưa vào lệnh')]:
-        a_.set_xticks(x); a_.set_xticklabels([l.replace(' theo vùng', '\ntheo vùng') for l in labs], fontsize=7)
-        a_.set_ylabel(yl); tag(a_, tt); a_.grid(axis='x', visible=False)
-        a_.legend(handles=[Patch(color=COL['yaw'], label='Yaw'), Patch(color=COL['pitch'], label='Pitch')], fontsize=7)
-    a4.set_ylim(0, max(out[ax]['uff_hold'] for _, out in ffs[1:] for ax in gsim.AX) * 1.3)
-    save(fig, 'h3_09_khao_sat_bu')
+# ============================================================================ Hinh 3.9
+def f09():
+    ffs = R['ff_survey'][1:]      # bo "Khong bu"
+    fd = dict(ffs)
+    fig, G = new_fig([dict(cols=TWO, h=3.0, top=LEG1), dict(cols=TWO, h=3.0, top=LEG1)])
+    show = {'k₀ = 0,80': 'low', 'k₀ = 0,95': 'high', 'k(v) theo vùng': 'chosen'}
+    for j, ax in enumerate(AX):
+        a = G[0]['axes'][j]
+        ser = {k: fd[k]['series'][ax]['e'] for k in show}
+        t0, t1 = best_window(ser, ['k₀ = 0,80', 'k₀ = 0,95'], 'k(v) theo vùng', 2.5 if ax == 'yaw' else 2.0, SEG_AX[ax])
+        m = (T >= t0) & (T < t1)
+        for lab, kd in show.items():
+            a.plot(T[m], ser[lab][m], **opt(ax, kd), zorder=Z[kd])
+        symlim(a, *[ser[k][m] for k in show]); a.set_xlim(t0, t1); time_axes(a)
+        a.set_xlabel('Thời gian (s)'); a.set_ylabel('Sai lệch góc (°)')
+        seg_no = [i for i, s in enumerate(C.SEG) if s[0] <= t0 < s[1]][0] + 1
+        subcap(fig, G[0], j, f'{"ab"[j]}) Trục {AXN[ax]}, đoạn {seg_no}')
+    band_legend(fig, G[0], [tup([opt(x, k) for x in AX]) for k in ('low', 'high', 'chosen')],
+                ['$k_0$ = 0,80', '$k_0$ = 0,95', '$k(v)$ theo vùng (chọn)'], hl=3.6)
+    x = np.arange(len(ffs))
+    ticks = ['0,80', '0,88', '0,95', '$k(v)$']
+    for jj, (key, yl, cap) in enumerate([('erms', '$e_{\\mathrm{rms}}$ (°)', 'c) Sai lệch hiệu dụng'),
+                                         ('uff_hold', '$\\sigma(u_{ff})$ (°/s)', 'd) Độ lệch chuẩn $u_{ff}$ khi đứng yên')]):
+        a = G[1]['axes'][jj]
+        for k, ax in enumerate(AX):
+            a.bar(x - 0.19 + 0.38 * k, [out[ax][key] for _, out in ffs], 0.36, color=PAL[ax]['main'], zorder=3)
+        a.set_xticks(x); a.set_xticklabels(ticks); hilite(a, 3)
+        a.set_xlim(-0.55, len(x) - 0.45)
+        a.set_xlabel('Hệ số $k_0$ cố định / luật $k(v)$'); a.set_ylabel(yl); bar_axes(a)
+        subcap(fig, G[1], jj, cap)
+    hk, lk = key_patches()
+    band_legend(fig, G[1], hk, lk, hl=1.6)
+    finish(fig, 'h3_09_khao_sat_bu')
 
 
-# ========================================================================== Hinh 3.11 khao sat ngoai suy
-def fig_tp_survey():
+# ============================================================================ Hinh 3.11
+def f11():
     tpr = R['tp_survey']
-    fig = plt.figure(figsize=(W, 8.6 * CM))
-    gs = fig.add_gridspec(2, 2, hspace=0.66, wspace=0.3)
+    fig, G = new_fig([dict(cols=TWO, h=3.0, top=LEG1), dict(cols=TWO, h=3.0, top=LEG1)])
     wins = {'yaw': (50.4, 51.9), 'pitch': (64.2, 65.2)}
-    show = [0.0, 0.008, 0.012, 0.020]
-    for j, ax in enumerate(gsim.AX):
-        a_ = fig.add_subplot(gs[0, j])
-        a, b = wins[ax]
-        i = 0
+    show = {0.0: 'low', 0.012: 'chosen', 0.020: 'high'}
+    for j, ax in enumerate(AX):
+        a = G[0]['axes'][j]
+        t0, t1 = wins[ax]; m = (T >= t0) & (T < t1)
+        arrs = []
         for tp, out in tpr:
-            if tp not in show:
+            kd = show.get(round(tp, 3))
+            if kd is None:
                 continue
-            t, e = win(out['series'], ax, a, b)
-            ch = abs(tp - 0.012) < 1e-9
-            a_.plot(t, e, color=COL[ax] if ch else [LIGHT[ax][0], LIGHT[ax][1], None, LIGHT[ax][3]][i],
-                    lw=1.3 if ch else 0.8, ls='-' if ch else '--',
-                    label=f'τ$_p$ = {tp * 1e3:.0f} ms' + (' (chọn)' if ch else ''))
-            i += 1
-        a_.set_xlabel('Thời gian (s)'); a_.set_ylabel('Sai lệch góc (°)')
-        tag(a_, f'{"ab"[j]}) Trục {AXN[ax]}')
-        a_.legend(fontsize=6.5, loc='upper right', ncol=2)
-    a3 = fig.add_subplot(gs[1, 0]); a4 = fig.add_subplot(gs[1, 1])
-    tp_ms = [tp * 1e3 for tp, _ in tpr]
-    for ax in gsim.AX:
-        a3.plot(tp_ms, [out[ax]['erms'] for _, out in tpr], color=COL[ax], marker='o', ms=4, label=f'{AXN[ax]}')
-        a4.plot(tp_ms, [out[ax]['u_hf'] for _, out in tpr], color=COL[ax], marker='o', ms=4, label=f'{AXN[ax]}')
-    for a_ in (a3, a4):
-        a_.axvline(12, color=INK, lw=0.7, ls=':')
-        a_.text(12.3, a_.get_ylim()[1] * 0.97, 'chọn 12 ms', fontsize=7, va='top')
-        a_.set_xlabel('Khoảng ngoại suy τ$_p$ (ms)'); a_.legend(fontsize=7)
-    a3.axvspan(8, 15, color='#f1f0ec', zorder=0, lw=0)
-    a3.set_ylabel('e$_{rms}$ (°)'); tag(a3, 'c) Chỉ tiêu chính theo τ$_p$')
-    a4.set_ylabel('Tỉ lệ năng lượng lệnh trên 20 Hz (%)'); tag(a4, 'd) Ràng buộc: nhiễu tần số cao trong lệnh')
-    save(fig, 'h3_11_khao_sat_ngoai_suy')
+            e = out['series'][ax]['e'][m]; arrs.append(e)
+            a.plot(T[m], e, **opt(ax, kd), zorder=Z[kd])
+        symlim(a, *arrs); a.set_xlim(t0, t1); time_axes(a)
+        a.set_xlabel('Thời gian (s)'); a.set_ylabel('Sai lệch góc (°)')
+        subcap(fig, G[0], j, f'{"ab"[j]}) Trục {AXN[ax]}, đoạn {3 if ax == "yaw" else 4}')
+    band_legend(fig, G[0], [tup([opt(x, k) for x in AX]) for k in ('low', 'chosen', 'high')],
+                ['$\\tau_p$ = 0 ms', '$\\tau_p$ = 12 ms (chọn)', '$\\tau_p$ = 20 ms'], hl=3.6)
+    tp_ms = np.array([tp * 1e3 for tp, _ in tpr])
+    for jj, (key, yl, cap) in enumerate([('erms', '$e_{\\mathrm{rms}}$ (°)', 'c) Sai lệch hiệu dụng'),
+                                         ('u_hf', 'Năng lượng (%)', 'd) Năng lượng lệnh trên 20 Hz')]):
+        a = G[1]['axes'][jj]
+        a.axvspan(11.0, 13.0, color=HILITE, lw=0, zorder=0)
+        for ax in AX:
+            v = np.array([out[ax][key] for _, out in tpr])
+            a.plot(tp_ms, v, color=PAL[ax]['main'], lw=2.0, marker='o', ms=5.5, mec='white', mew=0.8, zorder=3)
+        a.set_xticks(tp_ms); a.set_xticklabels([num(v, 0) for v in tp_ms])
+        a.get_xticklabels()[list(tp_ms).index(12.0)].set_fontweight('bold')
+        a.set_xlim(-1, 21); a.set_ylim(bottom=0); time_axes(a)
+        a.set_xlabel('Khoảng ngoại suy $\\tau_p$ (ms)'); a.set_ylabel(yl)
+        subcap(fig, G[1], jj, cap)
+    band_legend(fig, G[1], [Line2D([], [], color=PAL[x]['main'], lw=2.0, marker='o', ms=5.5, mec='white', mew=0.8) for x in AX]
+                + [Patch(facecolor=HILITE, edgecolor='#9a9a9a', lw=0.6)], ['Trục Yaw', 'Trục Pitch', 'Phương án chọn'])
+    finish(fig, 'h3_11_khao_sat_ngoai_suy')
 
 
-# ========================================================================== Hinh 3.13 khao sat gioi han
-def fig_lim_survey():
+# ============================================================================ Hinh 3.13
+def f13():
     limr = R['lim_survey']; gl = R2['glitch']; Tg = R2['Tg']
-    fig = plt.figure(figsize=(W, 8.6 * CM))
-    gs = fig.add_gridspec(2, 2, hspace=0.66, wspace=0.3)
+    fig, G = new_fig([dict(cols=TWO, h=3.0, top=LEG2), dict(cols=TWO, h=3.0, top=LEG1, bot=BOT2)])
     wins = {'yaw': (72.6, 74.0), 'pitch': (65.0, 65.6)}
-    for j, ax in enumerate(gsim.AX):
-        a_ = fig.add_subplot(gs[0, j])
-        a, b = wins[ax]
-        for i, (lab, out) in enumerate(limr):
-            if lab.startswith('Cố định 165'):
-                continue
-            t, u = win(out['series'], ax, a, b, key='u')
-            ch = lab == 'Theo vùng'
-            a_.plot(t, u, color=COL[ax] if ch else LIGHT[ax][[0, 1, 3][min(i, 2)]], lw=1.3 if ch else 0.8,
-                    ls='-' if ch else '--', label=lab + (' (chọn)' if ch else ''))
-        m = (T >= a) & (T < b)
-        a_.plot(T[m], -wd[ax][m], color=INK, lw=0.6, ls=':', label='Lệnh cần để bù (−ω$_b$)')
-        a_.set_xlabel('Thời gian (s)'); a_.set_ylabel('Lệnh tốc độ (°/s)')
-        tag(a_, f'{"ab"[j]}) Lệnh trục {AXN[ax]} ở đoạn nhanh nhất')
-        a_.legend(fontsize=6.3, loc='lower left')
-    a3 = fig.add_subplot(gs[1, 0])
-    labs = [l for l, _ in limr]; x = np.arange(len(labs))
-    for k, ax in enumerate(gsim.AX):
-        o = -0.2 + 0.4 * k
-        a3.bar(x + o, [out[ax]['emax'] for _, out in limr], 0.38,
-               color=[COL[ax] if l == 'Theo vùng' else LIGHT[ax][0] for l in labs], zorder=3)
-        for xi, (_, out) in zip(x, limr):
-            a3.text(xi + o, out[ax]['emax'] + 0.1, f'ρ {vn(out[ax]["rho"], 1)}%', ha='center', fontsize=6, rotation=90, va='bottom', color='#52514e')
-    a3.set_xticks(x); a3.set_xticklabels([l.replace(' °/s', '').replace('Cố định', 'Cố định\n') for l in labs], fontsize=7)
-    a3.set_ylabel('e$_{max}$ (°)'); a3.grid(axis='x', visible=False); a3.set_ylim(0, 8.5)
-    tag(a3, 'c) Sai lệch lớn nhất và tỉ lệ bão hòa ρ')
-    a3.legend(handles=[Patch(color=COL['yaw'], label='Yaw'), Patch(color=COL['pitch'], label='Pitch')], fontsize=7)
-    a4 = fig.add_subplot(gs[1, 1])
-    for lab, ls, col in [('Cố định 410 °/s', '--', LIGHT['yaw'][1]), ('Theo vùng', '-', COL['yaw'])]:
-        s = gl[lab]['series']['yaw']
-        a4.plot((Tg - 0.5) * 1e3, s['e'], color=col, ls=ls, lw=1.1 if ls == '-' else 0.9, label=lab)
-    a4.set_xlim(-20, 250); a4.set_xlabel('Thời gian từ mẫu IMU2 lỗi (ms)'); a4.set_ylabel('Sai lệch góc Yaw (°)')
-    tag(a4, 'd) Ràng buộc an toàn: 3 mẫu IMU2 lỗi khi đứng yên'); a4.legend(fontsize=7)
-    save(fig, 'h3_13_khao_sat_gioi_han')
+    kind = {'Cố định 135 °/s': 'low', 'Cố định 410 °/s': 'high', 'Theo vùng': 'chosen'}
+    for j, ax in enumerate(AX):
+        a = G[0]['axes'][j]
+        t0, t1 = wins[ax]; m = (T >= t0) & (T < t1)
+        for lab, out in limr:
+            if lab in kind:
+                a.plot(T[m], out['series'][ax]['u'][m], **opt(ax, kind[lab]), zorder=Z[kind[lab]])
+        a.plot(T[m], -wd[ax][m], **REF, zorder=6)
+        a.set_xlim(t0, t1); time_axes(a)
+        a.set_xlabel('Thời gian (s)'); a.set_ylabel('Lệnh tốc độ (°/s)')
+        subcap(fig, G[0], j, f'{"ab"[j]}) Trục {AXN[ax]}, đoạn {5 if ax == "yaw" else 4}')
+    hl_ = [tup([opt(x, 'low') for x in AX]), tup([opt(x, 'chosen') for x in AX]), tup([opt(x, 'high') for x in AX]),
+           Line2D([], [], **REF)]
+    band_legend(fig, G[0], hl_, ['Cố định 135 °/s', 'Theo vùng (chọn)', 'Cố định 410 °/s', 'Lệnh cần để bù ($-\\omega_b$)'],
+                ncol=2, hl=3.6)
+    # c) e_max
+    a = G[1]['axes'][0]
+    x = np.arange(len(limr))
+    for k, ax in enumerate(AX):
+        a.bar(x - 0.19 + 0.38 * k, [out[ax]['emax'] for _, out in limr], 0.36, color=PAL[ax]['main'], zorder=3)
+    a.set_xticks(x); a.set_xticklabels(['135', '165', '410', 'Theo\nvùng']); hilite(a, 3)
+    a.set_xlim(-0.55, len(x) - 0.45)
+    a.set_xlabel('Giới hạn lệnh (°/s)'); a.set_ylabel('$e_{\\mathrm{max}}$ (°)'); bar_axes(a)
+    subcap(fig, G[1], 0, 'c) Sai lệch lớn nhất')
+    # d) mau IMU2 loi
+    a = G[1]['axes'][1]
+    for lab in ('Cố định 135 °/s', 'Theo vùng', 'Cố định 410 °/s'):
+        a.plot((Tg - 0.5) * 1e3, gl[lab]['series']['yaw']['e'], **opt('yaw', kind[lab]), zorder=Z[kind[lab]])
+    a.set_xlim(-20, 250); time_axes(a)
+    a.set_xlabel('Thời gian từ mẫu lỗi (ms)'); a.set_ylabel('Sai lệch góc (°)')
+    subcap(fig, G[1], 1, 'd) Trục Yaw, ba mẫu IMU2 lỗi')
+    hk, lk = key_patches()
+    band_legend(fig, G[1], hk, lk, hl=1.6)
+    finish(fig, 'h3_13_khao_sat_gioi_han')
 
 
-# ========================================================================== Hinh 3.15 khao sat dao chieu / dung
-def fig_rev_survey():
+# ============================================================================ Hinh 3.15
+def f15():
     revs = R['rev_survey']; stp = R2['stop_test']
-    fig = plt.figure(figsize=(W, 10.0 * CM))
-    gs = fig.add_gridspec(2, 2, hspace=0.62, wspace=0.3)
-    a1 = fig.add_subplot(gs[0, 0]); a2 = fig.add_subplot(gs[0, 1])
+    fig, G = new_fig([dict(cols=TWO, h=3.0, top=LEG2), dict(cols=TWO, h=3.0, top=LEG1)])
     base = [o for p, o in revs if p[0] == 'none'][0]
-    items = [(p, o) for p, o in revs if p[0] != 'none']
-    labs = [f'{p[0] * 1e3:.0f} ms\n{p[1]:.0f}' for p, _ in items]
-    x = np.arange(len(items))
-    for k, ax in enumerate(gsim.AX):
-        o = -0.2 + 0.4 * k
-        ch = [(p[0] == 0.010 and p[1] == 1000.0) for p, _ in items]
-        a1.bar(x + o, [(oo[ax]['erms'] / base[ax]['erms'] - 1) * 100 for _, oo in items], 0.38,
-               color=[COL[ax] if c else LIGHT[ax][0] for c in ch], zorder=3)
-        a2.bar(x + o, [(oo[ax]['signchg'] / base[ax]['signchg'] - 1) * 100 for _, oo in items], 0.38,
-               color=[COL[ax] if c else LIGHT[ax][0] for c in ch], zorder=3)
-    for a_, yl, tt in [(a1, 'Thay đổi e$_{rms}$ (%)', 'a) Ảnh hưởng tới sai lệch hiệu dụng'),
-                       (a2, 'Thay đổi số lần lệnh đổi dấu (%)', 'b) Ảnh hưởng tới số lần lệnh đổi dấu')]:
-        a_.axhline(0, color=INK, lw=0.7)
-        a_.set_xticks(x); a_.set_xticklabels(labs, fontsize=6.5)
-        a_.set_xlabel('t$_{0max}$ / α$_{rev}$ (°/s²)'); a_.set_ylabel(yl); tag(a_, tt)
-        a_.grid(axis='x', visible=False)
-        a_.legend(handles=[Patch(color=COL['yaw'], label='Yaw'), Patch(color=COL['pitch'], label='Pitch')], fontsize=7)
-    for j, ax in enumerate(gsim.AX):
-        a_ = fig.add_subplot(gs[1, j])
-        for lab, ls, col in [('Không xử lý dừng', '--', GREY), ('Có chế độ dừng', '-', COL[ax])]:
-            s = stp[lab][ax]['series']
-            a_.plot(s['T'], s['e'], color=col, ls=ls, lw=1.1 if ls == '-' else 0.9, label=lab)
-        a_.axvline(0, color=INK, lw=0.6, ls=':')
-        a_.set_xlim(-0.3, 1.0); a_.set_xlabel('Thời gian từ khi khung mang dừng (s)'); a_.set_ylabel('Sai lệch góc (°)')
-        tag(a_, f'{"cd"[j]}) Bài thử dừng đột ngột, trục {AXN[ax]}'); a_.legend(fontsize=7)
-    save(fig, 'h3_15_khao_sat_dao_chieu_dung')
+    t0s = [0.010, 0.020, 0.040]; als = [300.0, 1000.0]
+    d = {p: o for p, o in revs}
+    x = np.arange(len(t0s)); wb = 0.18
+    for jj, (key, axes_, cap) in enumerate([('erms', AX, 'a) Sai lệch hiệu dụng $e_{\\mathrm{rms}}$'),
+                                            ('signchg', ('pitch',), 'b) Số lần lệnh Pitch đổi dấu')]):
+        a = G[0]['axes'][jj]
+        n = len(axes_) * 2; pos = (np.arange(n) - (n - 1) / 2) * wb
+        k = 0
+        for ax in axes_:
+            for al in als:
+                v = [(d[(t, al)][ax][key] / base[ax][key] - 1) * 100 for t in t0s]
+                if al == 300.0:
+                    a.bar(x + pos[k], v, wb * 0.94, facecolor='white', edgecolor=PAL[ax]['main'], hatch='////', lw=1.0, zorder=3)
+                else:
+                    a.bar(x + pos[k], v, wb * 0.94, color=PAL[ax]['main'], zorder=3)
+                k += 1
+        a.axhline(0, color=INK, lw=1.0, zorder=4)
+        a.set_xticks(x); a.set_xticklabels([num(t * 1e3, 0) for t in t0s]); hilite(a, 0)
+        a.set_xlim(-0.55, len(x) - 0.45); time_axes(a)
+        a.set_xlabel('Tầm dự báo $t_{0\\,\\mathrm{max}}$ (ms)'); a.set_ylabel('Thay đổi (%)')
+        bar_axes(a)
+        subcap(fig, G[0], jj, cap)
+    hs = [Patch(facecolor=PAL['yaw']['main']), Patch(facecolor=PAL['pitch']['main']),
+          Patch(facecolor='white', edgecolor='#555555', hatch='////', lw=0.9), Patch(facecolor='#555555'),
+          Patch(facecolor=HILITE, edgecolor='#9a9a9a', lw=0.6)]
+    ls = ['Trục Yaw', 'Trục Pitch', '$\\alpha_{\\mathrm{rev}}$ = 300 °/s²', '$\\alpha_{\\mathrm{rev}}$ = 1 000 °/s² (chọn)',
+          'Phương án chọn']
+    band_legend(fig, G[0], hs, ls, ncol=3, hl=1.6)
+    # c), d) lenh trong giai doan giu sau khi dung (tu 0,3 s, nhu Bang 3.10)
+    for j, ax in enumerate(AX):
+        a = G[1]['axes'][j]
+        sN = stp['Không xử lý dừng'][ax]['series']; sY = stp['Có chế độ dừng'][ax]['series']
+        m = (sN['T'] >= 0.3) & (sN['T'] <= 1.5)
+        a.plot(sY['T'][m], sY['u'][m], **after(ax), zorder=3)
+        a.plot(sN['T'][m], sN['u'][m], **BEFORE, zorder=4)
+        symlim(a, sN['u'][m], sY['u'][m], k=1.1); time_axes(a)
+        a.set_xlim(0.3, 1.5)
+        a.set_xlabel('Thời gian từ khi khung mang dừng (s)'); a.set_ylabel('Lệnh tốc độ (°/s)')
+        subcap(fig, G[1], j, f'{"cd"[j]}) Trục {AXN[ax]}, giai đoạn giữ')
+    band_legend(fig, G[1], [Line2D([], [], **BEFORE), tup([after('yaw'), after('pitch')])],
+                ['Không có chế độ dừng', 'Có chế độ dừng (chọn)'], hl=3.6)
+    finish(fig, 'h3_15_khao_sat_dao_chieu_dung')
 
 
-# ========================================================================== Hinh 3.17 khao sat tao dang
-def fig_shape_survey():
-    shp = R2['shape_survey']; tr = R2['shape_traj']
-    fig = plt.figure(figsize=(W, 8.6 * CM))
-    gs = fig.add_gridspec(2, 2, hspace=0.66, wspace=0.3)
-    a1 = fig.add_subplot(gs[0, 0])
-    a1.step(tr['T'] * 1e3, tr['req'], where='post', color=GREY, ls='--', lw=0.9, label='Lệnh yêu cầu')
-    a1.plot(tr['T'] * 1e3, tr['a18'], color=LIGHT['yaw'][1], lw=0.9, ls='--', label='a$_{max}$ = 18 000 °/s²')
-    a1.plot(tr['T'] * 1e3, tr['a30'], color=COL['yaw'], lw=1.3, label='a$_{max}$ = 30 000 °/s² (khi đảo chiều)')
-    a1.set_xlabel('Thời gian (ms)'); a1.set_ylabel('Lệnh tốc độ (°/s)'); a1.legend(fontsize=6.5, loc='upper right')
-    tag(a1, 'a) Đổi lệnh +300 → −300 °/s')
-    a2 = fig.add_subplot(gs[0, 1])
-    base = shp[0][1]; ch = shp[3][1]
-    for ax in gsim.AX:
-        pass
+# ============================================================================ Hinh 3.17
+def f17():
+    shp = R2['shape_survey']; trj = R2['shape_traj']
+    fig, G = new_fig([dict(cols=TWO, h=3.0, top=LEG2), dict(cols=TWO, h=3.0, top=LEG1, bot=BOT2)])
+    a = G[0]['axes'][0]
+    tms = trj['T'] * 1e3
+    l3, = a.plot(tms, trj['a30'], color=INK, lw=LW_CH, zorder=3)
+    l2, = a.plot(tms, trj['a18'], color='#8a8a8a', lw=LW_ALT + 0.2, ls=DASH, zorder=4)
+    l1, = a.step(tms, trj['req'], where='post', color=INK, lw=1.2, ls=DOT, zorder=5)
+    a.set_xlim(tms[0], tms[-1]); a.set_ylim(-340, 340)
+    a.yaxis.set_major_locator(mt.MultipleLocator(150))
+    a.set_xlabel('Thời gian (ms)'); a.set_ylabel('Lệnh tốc độ (°/s)')
+    band_legend(fig, G[0], [l1, l3, l2], ['Lệnh yêu cầu', '$a_{\\mathrm{max}}$ = 30 000 °/s² (khi đảo chiều)',
+                                          '$a_{\\mathrm{max}}$ = 18 000 °/s²'], ncol=2, cx=TWO[0][0] + PW / 2, columnspacing=1.2)
+    subcap(fig, G[0], 0, 'a) Đổi chiều lệnh +300 → −300 °/s')
+    a = G[0]['axes'][1]
     S0 = R['ladder_series']['dao_chieu']; S1 = R['ladder_series']['tao_dang']
     mm = (T >= C.WIN[0]) & (T < C.WIN[1])
     bins = np.linspace(0, 55, 45)
-    a2.hist(np.abs(S0['pitch']['du'][mm]), bins=bins, color=GREY, alpha=0.6, label='Không tạo dạng', log=True)
-    a2.hist(np.abs(S1['pitch']['du'][mm]), bins=bins, histtype='step', color=COL['pitch'], lw=1.2, label='Có tạo dạng', log=True)
-    a2.set_xlabel('Bước lệnh trong một chu kỳ 2 ms (°/s)'); a2.set_ylabel('Số mẫu'); a2.legend(fontsize=7)
-    tag(a2, 'b) Phân bố bước lệnh trục Pitch')
-    a3 = fig.add_subplot(gs[1, 0]); a4 = fig.add_subplot(gs[1, 1])
-    labs = ['Không\ngiới hạn', '18 000\ncố định', '30 000\ncố định', '18 000 /\n30 000']
-    x = np.arange(4)
-    for k, ax in enumerate(gsim.AX):
-        o = -0.2 + 0.4 * k
-        cols = [LIGHT[ax][0]] * 3 + [COL[ax]]
-        a3.bar(x + o, [out[ax]['dumax'] for _, out in shp], 0.38, color=cols, zorder=3)
-        a4.bar(x + o, [out[ax]['erms'] for _, out in shp], 0.38, color=cols, zorder=3)
-    for a_, yl, tt in [(a3, 'Bước lệnh lớn nhất (°/s)', 'c) Chỉ tiêu chính: bước lệnh lớn nhất'),
-                       (a4, 'e$_{rms}$ (°)', 'd) Ràng buộc: sai lệch hiệu dụng')]:
-        a_.set_xticks(x); a_.set_xticklabels(labs, fontsize=7); a_.set_ylabel(yl); tag(a_, tt)
-        a_.grid(axis='x', visible=False)
-        a_.legend(handles=[Patch(color=COL['yaw'], label='Yaw'), Patch(color=COL['pitch'], label='Pitch')], fontsize=7)
-    save(fig, 'h3_17_khao_sat_tao_dang')
+    a.hist(np.abs(S1['pitch']['du'][mm]), bins=bins, histtype='step', color=PAL['pitch']['main'], lw=LW_CH, log=True, zorder=3)
+    a.hist(np.abs(S0['pitch']['du'][mm]), bins=bins, histtype='step', color=INK, lw=LW_BEF, ls=DASH, log=True, zorder=4)
+    a.set_xlim(0, 55)
+    a.set_xlabel('Bước lệnh trong 2 ms (°/s)'); a.set_ylabel('Số mẫu')
+    band_legend(fig, G[0], [Line2D([], [], **BEFORE), Line2D([], [], **after('pitch'))], ['Không tạo dạng', 'Có tạo dạng (chọn)'],
+                ncol=1, cx=TWO[1][0] + PW / 2)
+    subcap(fig, G[0], 1, 'b) Phân bố bước lệnh trục Pitch')
+    x = np.arange(len(shp))
+    ticks = ['Không\ngiới hạn', '18 000', '30 000', '18 000 /\n30 000']
+    for jj, (key, yl, cap) in enumerate([('dumax', 'Bước lệnh (°/s)', 'c) Bước lệnh lớn nhất'),
+                                         ('erms', '$e_{\\mathrm{rms}}$ (°)', 'd) Sai lệch hiệu dụng')]):
+        a = G[1]['axes'][jj]
+        for k, ax in enumerate(AX):
+            a.bar(x - 0.19 + 0.38 * k, [out[ax][key] for _, out in shp], 0.36, color=PAL[ax]['main'], zorder=3)
+        a.set_xticks(x); a.set_xticklabels(ticks); hilite(a, 3)
+        a.set_xlim(-0.55, len(x) - 0.45)
+        a.set_xlabel('$a_{\\mathrm{max}}$ (°/s²)'); a.set_ylabel(yl); bar_axes(a)
+        subcap(fig, G[1], jj, cap)
+    hk, lk = key_patches()
+    band_legend(fig, G[1], hk, lk, hl=1.6)
+    finish(fig, 'h3_17_khao_sat_tao_dang')
 
 
-# ========================================================================== Hinh 3.19 khao sat lich RS485
-def fig_bus_survey():
+# ============================================================================ Hinh 3.19
+def f19():
     bus = R2['bus_sched']; bc = R2['bus_closed']
-    fig = plt.figure(figsize=(W, 5.8 * CM))
-    gs = fig.add_gridspec(1, 2, wspace=0.3)
-    a1 = fig.add_subplot(gs[0, 0])
-    for mode, ls, lab in [('yawpri', '--', 'Ưu tiên Yaw'), ('alt', '-', 'Luân phiên')]:
-        for ax in gsim.AX:
-            g = np.sort(bus[mode][ax]['gaps']); p = 1 - np.arange(len(g)) / len(g)
-            a1.semilogy(g, p, color=COL[ax], ls=ls, lw=1.1, label=f'{lab}, {AXN[ax]}')
-    a1.set_xlim(0, 36); a1.set_ylim(1e-4, 1.1)
-    a1.set_xlabel('Khoảng cập nhật lệnh Δ (ms)'); a1.set_ylabel('Xác suất vượt P(Δ > x)')
-    a1.legend(fontsize=6.5); tag(a1, 'a) Phân bố khoảng cập nhật')
-    a2 = fig.add_subplot(gs[0, 1])
-    x = np.arange(2)
-    for k, ax in enumerate(gsim.AX):
-        o = -0.2 + 0.4 * k
-        a2.bar(x + o, [bc[('yawpri', 0.012)][ax]['erms'], bc[('alt', 0.012)][ax]['erms']], 0.38,
-               color=[LIGHT[ax][0], COL[ax]], zorder=3)
+    fig, G = new_fig([dict(cols=TWO, h=3.2, top=LEG1 + LEG2)])
+    g = G[0]
+    y1 = band_y(fig, g, LEG1 / 2); y2 = band_y(fig, g, LEG1 + LEG2 / 2)
+    hk, lk = key_patches()
+    band_legend(fig, g, hk, lk, y=y1, hl=1.6)
+    a = g['axes'][0]
+    sty = {'yawpri': lambda ax: dict(color=PAL[ax]['light'], lw=LW_ALT, ls=DASH),
+           'alt': lambda ax: dict(color=PAL[ax]['main'], lw=LW_CH if ax == 'pitch' else 1.2, ls='-')}
+    for mode, ax in [('yawpri', 'yaw'), ('yawpri', 'pitch'), ('alt', 'pitch'), ('alt', 'yaw')]:
+        gp = np.sort(bus[mode][ax]['gaps']); p = 1 - np.arange(len(gp)) / len(gp)
+        a.semilogy(gp, p, **sty[mode](ax), zorder=3)
+    a.set_xlim(0, 36); a.set_ylim(1e-4, 1.5)
+    a.yaxis.set_major_locator(mt.FixedLocator([1e-4, 1e-3, 1e-2, 1e-1, 1]))
+    a.yaxis.set_major_formatter(mt.FixedFormatter(['$\\mathrm{10^{-4}}$', '$\\mathrm{10^{-3}}$', '$\\mathrm{10^{-2}}$',
+                                                   '$\\mathrm{10^{-1}}$', '1']))
+    a.yaxis.set_minor_locator(mt.NullLocator())
+    a.set_xlabel('Khoảng cập nhật lệnh $\\Delta$ (ms)'); a.set_ylabel('$P(\\Delta > x)$')
+    band_legend(fig, g, [tup([sty['yawpri'](x) for x in AX]), tup([after(x) for x in AX])],
+                ['Ưu tiên Yaw', 'Luân phiên (chọn)'], ncol=1, cx=TWO[0][0] + PW / 2, y=y2, hl=3.6)
+    subcap(fig, g, 0, 'a) Phân bố khoảng cập nhật lệnh')
+    a = g['axes'][1]
+    x = np.arange(2); top = 0
+    for k, ax in enumerate(AX):
+        o = -0.19 + 0.38 * k
+        a.bar(x + o, [bc[('yawpri', 0.012)][ax]['erms'], bc[('alt', 0.012)][ax]['erms']], 0.36, color=PAL[ax]['main'], zorder=3)
         for xi, mode in enumerate(('yawpri', 'alt')):
             for tp, mk in [(0.008, 'v'), (0.016, '^')]:
-                a2.plot(xi + o, bc[(mode, tp)][ax]['erms'], marker=mk, color=INK, ms=3.5, lw=0, zorder=6)
-    a2.set_xticks(x); a2.set_xticklabels(['Ưu tiên Yaw', 'Luân phiên']); a2.grid(axis='x', visible=False)
-    a2.set_ylabel('e$_{rms}$ (°)')
-    a2.legend(handles=[Patch(color=COL['yaw'], label='Yaw'), Patch(color=COL['pitch'], label='Pitch'),
-                       Line2D([], [], marker='v', lw=0, color=INK, label='τ$_p$ = 8 ms'),
-                       Line2D([], [], marker='^', lw=0, color=INK, label='τ$_p$ = 16 ms')], fontsize=6.5, ncol=4, loc='upper center', bbox_to_anchor=(0.5, -0.12))
-    tag(a2, 'b) Sai lệch với hai lịch (cột: τ$_p$ = 12 ms)')
-    save(fig, 'h3_19_khao_sat_rs485')
+                v = bc[(mode, tp)][ax]['erms']; top = max(top, v)
+                a.plot(xi + o, v, marker=mk, color=INK, ms=6.5, mec='white', mew=0.7, lw=0, zorder=6)
+    a.set_xticks(x); a.set_xticklabels(['Ưu tiên Yaw', 'Luân phiên']); hilite(a, 1)
+    a.set_xlim(-0.6, 1.6); a.set_ylim(0, top * 1.1); time_axes(a, 4)
+    a.set_xlabel('Lịch truyền RS485'); a.set_ylabel('$e_{\\mathrm{rms}}$ (°)'); bar_axes(a)
+    band_legend(fig, g, [Patch(facecolor='#8a8a8a'), Line2D([], [], marker='v', color=INK, ms=6.5, lw=0),
+                         Line2D([], [], marker='^', color=INK, ms=6.5, lw=0)],
+                ['$\\tau_p$ = 12 ms', '$\\tau_p$ = 8 ms', '$\\tau_p$ = 16 ms'], ncol=2, cx=TWO[1][0] + PW / 2, y=y2, hl=1.6)
+    subcap(fig, g, 1, 'b) Sai lệch hiệu dụng')
+    finish(fig, 'h3_19_khao_sat_rs485')
 
 
-# ========================================================================== Hinh 3.21 log A toan ban ghi
-def fig_final_log():
-    fig, axs = plt.subplots(3, 1, figsize=(W, 10.0 * CM), sharex=True, gridspec_kw=dict(hspace=0.35, height_ratios=[1, 1, 1]))
+# ============================================================================ Hinh 3.21
+def f21():
+    V = R['val']
+    fig, G = new_fig([dict(cols=ONE, h=2.6, top=LEG1 + 0.5), dict(cols=ONE, h=2.4, top=0.5), dict(cols=ONE, h=2.4, top=0.5)])
     m = (tu > 4) & (tu < 77)
-    a = axs[0]
-    a.plot(tu[m], L['by'][m], color=COL['yaw'], lw=0.7, label='Góc hướng khung mang')
-    a.plot(tu[m], L['bp'][m], color=COL['pitch'], lw=0.7, label='Góc gật khung mang')
-    seg_shade(a); a.set_ylabel('Góc (°)'); a.set_ylim(-34, 52); a.legend(fontsize=7, ncol=2, loc='upper center')
-    tag(a, 'a) Chuyển động khung mang')
-    V = R['val']
-    for j, ax in enumerate(gsim.AX):
-        a = axs[j + 1]
-        a.plot(tu[m], E['elog'][ax][m], color=COL[ax], lw=0.6)
-        seg_shade(a, labels=False)
+    a = G[0]['axes'][0]
+    a.plot(tu[m], L['by'][m], color=PAL['yaw']['main'], lw=1.5)
+    a.plot(tu[m], L['bp'][m], color=PAL['pitch']['main'], lw=1.5)
+    a.set_ylim(-32, 32); a.yaxis.set_major_locator(mt.MultipleLocator(15)); a.set_ylabel('Góc (°)')
+    seg_header(a)
+    subcap(fig, G[0], 0, 'a) Góc khung mang')
+    for j, ax in enumerate(AX):
+        a = G[j + 1]['axes'][0]
+        a.plot(tu[m], E['elog'][ax][m], color=PAL[ax]['main'], lw=1.0, zorder=3)
         for i, (s0, s1, _) in enumerate(C.SEG):
-            a.text((s0 + s1) / 2, 0.93, vn(V['log_seg'][ax][i]['erms'], 3) + '°', transform=a.get_xaxis_transform(),
-                   ha='center', fontsize=7, color='#52514e')
-        a.set_ylim(-1.0, 1.0); a.set_ylabel('Sai lệch (°)')
-        a.axhline(0, color=GREY, lw=0.5)
-        tag(a, f'{"bc"[j]}) Sai lệch góc trục {AXN[ax]} (nhãn: e$_{{rms}}$ từng đoạn)')
-    axs[-1].set_xlabel('Thời gian (s)'); axs[-1].set_xlim(4, 77)
-    save(fig, 'h3_21_log_hoan_thien')
+            v = V['log_seg'][ax][i]['erms']
+            a.plot([s0, s1], [v, v], color=INK, lw=1.3, ls=DASH, zorder=4)
+            a.plot([s0, s1], [-v, -v], color=INK, lw=1.3, ls=DASH, zorder=4)
+            a.text((s0 + s1) / 2, 1.0 + 0.06 / a._hcm, '±' + num(v, 3) + '°', transform=a.get_xaxis_transform(),
+                   ha='center', va='bottom', fontsize=FS_ANN)
+        a.set_ylim(-0.8, 0.8); a.yaxis.set_major_locator(mt.MultipleLocator(0.4))
+        a.set_ylabel('Sai lệch góc (°)')
+        subcap(fig, G[j + 1], 0, f'{"bc"[j]}) Sai lệch góc trục {AXN[ax]}')
+    for g in G:
+        a = g['axes'][0]
+        seg_shade(a); a.set_xlim(4, 77); a.set_xlabel('Thời gian (s)')
+        a.xaxis.set_major_locator(mt.MultipleLocator(10))
+    band_legend(fig, G[0], [Line2D([], [], color=PAL[x]['main'], lw=2.2) for x in AX] + [Line2D([], [], color=INK, lw=1.3, ls=DASH)],
+                ['Yaw', 'Pitch', '$\\pm e_{\\mathrm{rms}}$ từng đoạn'], y=band_y(fig, G[0], LEG1 / 2))
+    finish(fig, 'h3_21_log_hoan_thien')
 
 
-# ========================================================================== Hinh 3.22 qua trinh hoan thien
-def fig_progress():
-    fig, axs = plt.subplots(1, 2, figsize=(W, 6.6 * CM), gridspec_kw=dict(wspace=0.3))
-    x = np.arange(len(ORDER))
+# ============================================================================ Hinh 3.22
+def f22():
     V = R['val']
-    for a_, key, tt in [(axs[0], 'erms', 'a) Sai lệch hiệu dụng e$_{rms}$'), (axs[1], 'p99', 'b) Phân vị 99 % của |e|')]:
-        for ax in gsim.AX:
-            vals = [R['ladder'][n][ax][key] for n in ORDER]
-            a_.semilogy(x, vals, color=COL[ax], marker='o', ms=4, lw=1.2, label=f'{AXN[ax]}: mô phỏng tái hiện')
-            a_.plot(x[-1] + 0.12, V['log'][ax][key], marker='D', ms=5, color=COL[ax], mec=INK, mew=0.8, lw=0,
-                    label=f'{AXN[ax]}: đo (log A)')
-        a_.set_xticks(x); a_.set_xticklabels([NAMES[n] for n in ORDER], rotation=40, ha='right', fontsize=7)
-        a_.set_ylabel('Độ (°), thang log'); tag(a_, tt)
-        from matplotlib.ticker import FixedLocator, FuncFormatter, NullLocator
-        tk = [0.1, 0.2, 0.3, 0.5, 1, 2, 3, 5, 10, 20]
-        a_.yaxis.set_major_locator(FixedLocator(tk)); a_.yaxis.set_minor_locator(NullLocator())
-        a_.yaxis.set_major_formatter(FuncFormatter(lambda v, p: _comma(v, p)))
-        a_.set_ylim(0.12, 16)
-    h, l = axs[0].get_legend_handles_labels()
-    fig.legend(h, l, ncol=4, fontsize=7, loc='lower center', bbox_to_anchor=(0.5, -0.24))
-    save(fig, 'h3_22_qua_trinh_hoan_thien')
+    fig, G = new_fig([dict(cols=ONE, h=3.3, top=LEG1, bot=0.2), dict(cols=ONE, h=3.3, bot=1.12)])
+    x = np.arange(len(ORDER))
+    ticks = ['Ban đầu', 'Hiệu chỉnh\nnối tầng', 'Bù IMU2', 'Ngoại suy\nbù trễ', 'Giới hạn\nlệnh động',
+             'Đảo chiều,\ndừng', 'Tạo dạng\nlệnh', 'Hoàn thiện']
+    tk = [0.1, 0.2, 0.5, 1, 2, 5, 10]
+    mk = dict(marker='o', ms=5.5, mec='white', mew=0.8)
+
+    def dm(ax):
+        return dict(marker='D', ms=7, color=PAL[ax]['main'], mec=INK, mew=1.0, lw=0)
+    for jj, (key, yl, cap) in enumerate([('erms', '$e_{\\mathrm{rms}}$ (°)', 'a) Sai lệch hiệu dụng'),
+                                         ('p99', 'Phân vị 99 % $|e|$ (°)', 'b) Phân vị 99 % của $|e|$')]):
+        a = G[jj]['axes'][0]
+        for k, ax in enumerate(AX):
+            v = [R['ladder'][n][ax][key] for n in ORDER]
+            a.plot(x, v, color=PAL[ax]['main'], lw=2.0, **mk, zorder=3)
+            a.plot(x[-1] + 0.2 + 0.2 * k, V['log'][ax][key], **dm(ax), zorder=5)
+        a.set_yscale('log')
+        a.yaxis.set_major_locator(mt.FixedLocator(tk)); a.yaxis.set_minor_locator(mt.NullLocator())
+        a.yaxis.set_major_formatter(mt.FixedFormatter([num(t, 1) if t < 1 else num(t, 0) for t in tk]))
+        a.set_ylim(0.12, 16); a.set_xlim(-0.4, len(x) - 0.3)
+        a.set_xticks(x)
+        a.set_xticklabels(ticks if jj == 1 else [])
+        a.tick_params(axis='x', length=0)
+        a.set_ylabel(yl)
+        subcap(fig, G[jj], 0, cap)
+    band_legend(fig, G[0], [Line2D([], [], color=PAL[x_]['main'], lw=2.0, **mk) for x_ in AX]
+                + [tuple(Line2D([], [], **dm(x_)) for x_ in AX)],
+                ['Yaw, mô phỏng tái hiện', 'Pitch, mô phỏng tái hiện', 'Đo (log A)'], hl=2.6)
+    finish(fig, 'h3_22_qua_trinh_hoan_thien')
 
 
+# ============================================================================ cac hinh truoc / sau
 def all_before_after():
-    W3 = {'yaw': (72.0, 75.0), 'pitch': (64.0, 66.5)}
     before_after('h3_10_bu_imu2_truoc_sau', 'cascade', 'bu_imu2', {'yaw': (14.0, 20.0), 'pitch': (36.0, 39.0)},
-                 ['erms', 'p99', 'emax'], ['e$_{rms}$', 'Phân vị 99 % |e|', 'e$_{max}$'])
+                 ['erms', 'p99', 'emax'])
     before_after('h3_12_ngoai_suy_truoc_sau', 'bu_imu2', 'ngoai_suy', {'yaw': (50.4, 52.4), 'pitch': (64.2, 65.7)},
-                 ['erms', 'p99', 'emax'], ['e$_{rms}$', 'Phân vị 99 % |e|', 'e$_{max}$'])
+                 ['erms', 'p99', 'emax'])
     before_after('h3_14_gioi_han_truoc_sau', 'ngoai_suy', 'gioi_han', {'yaw': (72.4, 74.4), 'pitch': (64.6, 66.0)},
-                 ['erms', 'p99', 'emax', 'rho'], ['e$_{rms}$', 'Phân vị 99 % |e|', 'e$_{max}$', 'Tỉ lệ bão hòa ρ'])
+                 ['erms', 'p99', 'emax', 'rho'])
     before_after('h3_16_dao_chieu_truoc_sau', 'gioi_han', 'dao_chieu', {'yaw': (72.4, 74.4), 'pitch': (64.6, 66.0)},
-                 ['erms', 'p99', 'emax', 'signchg'], ['e$_{rms}$', 'Phân vị 99 % |e|', 'e$_{max}$', 'Số lần lệnh đổi dấu'])
+                 ['erms', 'p99', 'emax', 'signchg'])
     before_after('h3_18_tao_dang_truoc_sau', 'dao_chieu', 'tao_dang', {'yaw': (72.4, 74.4), 'pitch': (64.6, 66.0)},
-                 ['dumax', 'du99', 'erms', 'emax'], ['Bước lệnh lớn nhất', 'Phân vị 99 % bước lệnh', 'e$_{rms}$', 'e$_{max}$'])
+                 ['dumax', 'du99', 'erms', 'emax'])
     before_after('h3_20_rs485_truoc_sau', 'tao_dang', 'hoan_thien', {'yaw': (50.4, 52.4), 'pitch': (64.2, 65.7)},
-                 ['erms', 'p99', 'emax'], ['e$_{rms}$', 'Phân vị 99 % |e|', 'e$_{max}$'], extra_log=True)
+                 ['erms', 'p99', 'emax'], extra_log=True)
 
+
+ALL = dict(f05=f05, f06=f06, f07=f07, f08=f08, f09=f09, f11=f11, f13=f13, f15=f15, f17=f17, f19=f19, f21=f21,
+           f22=f22, ba=all_before_after)
 
 if __name__ == '__main__':
-    fig_excitation(); fig_validation(); fig_cascade_survey(); fig_cascade_real()
-    fig_ff_survey(); fig_tp_survey(); fig_lim_survey(); fig_rev_survey(); fig_shape_survey()
-    fig_bus_survey(); fig_final_log(); fig_progress(); all_before_after()
-    print('ok', sorted(os.listdir(OUT)))
+    sel = sys.argv[2:] or list(ALL)
+    for k in sel:
+        ALL[k]()
