@@ -20,6 +20,7 @@ python retime.py          # dựng lại thời điểm thật của các mẫu 
 python run_all.py         # kiểm chứng, chuỗi 8 cấu hình, khảo sát nối tầng / bù / ngoại suy / giới hạn / đảo chiều
 python run_part2.py       # tạo dạng lệnh, lịch RS485, mẫu IMU2 lỗi, dừng đột ngột
 python run_part3.py       # ràng buộc K_pω, sự kiện đổi chiều theo cấu hình
+python run_part4.py       # chạy bổ sung để mọi ô bảng đều có giá trị
 python figs.py            # hình -> figs/
 cp <báo cáo gốc>.docx report.docx
 cat build_head.py build_body.py > build_ch3.py && python build_ch3.py

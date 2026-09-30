@@ -4,6 +4,7 @@ L0 = LD['ban_dau']; L1 = LD['cascade']; L2 = LD['bu_imu2']; L3 = LD['ngoai_suy']
 L4 = LD['gioi_han']; L5 = LD['dao_chieu']; L6 = LD['tao_dang']; L7 = LD['hoan_thien']
 b0 = SL['ban_dau']; b1 = SL['cascade']
 cas = R['cascade']; kp = R3['kpw']
+R4 = pickle.load(open('results4.pkl', 'rb')); CF = R4['cascade_full']
 
 D.heading('3.1.3. Mô hình mô phỏng, bài thử chuẩn và kiểm chứng mô hình', 3)
 D.para('Các bước hiệu chỉnh ở mục 3.2 – 3.4 dùng một chương trình mô phỏng Python cài đặt đúng chuỗi lệnh của Chương 2 (Bảng 2.6) ở hai mức. **Mô phỏng khảo sát** dùng mô hình danh định của mục 3.1.2 (τ_{d} = 12 ms; T_{m} = 13 ms cho Yaw, 4 ms cho Pitch) để so sánh các phương án và chọn tham số. **Mô phỏng tái hiện** dùng mô hình được hiệu chỉnh để tái hiện bản ghi đo của cấu hình hoàn thiện (log A), và được dùng để ước lượng đáp ứng hệ thật ở các cấu hình trung gian không còn bản ghi đo. Trong chương, giá trị ghi "mô phỏng tái hiện" là giá trị ước lượng theo cách này; chỉ các giá trị ghi "đo (log A)" và Bảng 3.1 là số đo trực tiếp.')
@@ -29,8 +30,8 @@ for lab, key, nd in [('e_{rms} (°)', 'erms', 3), ('Phân vị 99 % |e| (°)', '
     for ax in AX:
         row += [f(ln[ax][key], nd), f(sm[ax][key], nd), f(lg[ax][key], nd), pc(lg[ax][key], sm[ax][key])]
     vrows.append(row)
-vrows.append(['Độ lệch chuẩn giữ tĩnh (°)', '–', f(V['sim_hold']['yaw']['erms'], 4), f(V['log_hold']['yaw']['erms'], 4),
-              pc(V['log_hold']['yaw']['erms'], V['sim_hold']['yaw']['erms']), '–', f(V['sim_hold']['pitch']['erms'], 4),
+vrows.append(['Độ lệch chuẩn giữ tĩnh (°)', f(R4['nom_hold']['yaw'], 4), f(V['sim_hold']['yaw']['erms'], 4), f(V['log_hold']['yaw']['erms'], 4),
+              pc(V['log_hold']['yaw']['erms'], V['sim_hold']['yaw']['erms']), f(R4['nom_hold']['pitch'], 4), f(V['sim_hold']['pitch']['erms'], 4),
               f(V['log_hold']['pitch']['erms'], 4), pc(V['log_hold']['pitch']['erms'], V['sim_hold']['pitch']['erms'])])
 D.table('Bảng 3.2. Kiểm chứng mô hình tái hiện trên cấu hình hoàn thiện',
         [['Chỉ tiêu', 'Yaw: danh định', 'Yaw: tái hiện', 'Yaw: đo', 'Sai khác', 'Pitch: danh định', 'Pitch: tái hiện', 'Pitch: đo', 'Sai khác']],
@@ -80,29 +81,23 @@ for par, lab in [('Kpt', 'K_{pθ} (s⁻¹)'), ('Kpw', 'K_{pω}'), ('Kiw', 'K_{i�
             s_ = cas[ax][par][lvl]
             ch = abs(s_['v'] - gsim.GAINS_FINAL[ax][par]) < 1e-9
             vv = (f(s_['v'], 2) if s_['v'] < 1 else f(s_['v'], 1)) + ('*' if ch else '')
-            band = '–'
-            if par == 'Kpw':
-                k_ = [x for x in kp[ax] if abs(x['v'] - s_['v']) < 1e-9]
-                band = f(k_[0]['band'], 1) if k_ else '–'
-            if par == 'Kiw':
-                cells[ax] = [vv, '–', '–', '–', f(s_['bt3_erms'], 2), f(s_['Je'], 3), band]
-            else:
-                cells[ax] = [vv, f(s_['tr'], 0), f(s_['ts'], 0), f(s_['OS'], 1), f(s_['bt3_erms'], 2), '–', band]
+            q = CF[ax][par][lvl]
+            cells[ax] = [vv, f(q['tr'], 0), f(q['ts'], 0), f(q['OS'], 1), f(s_['bt3_erms'], 2), f(q['Je'], 3), f(q['band'], 1)]
         rows.append([lab] + [cells['yaw'][c] + ' / ' + cells['pitch'][c] for c in range(7)])
         if par != 'Kiw' and lvl == 1:
             bold.append(len(rows) - 1)
 D.table('Bảng 3.4. Kết quả khảo sát bộ hệ số nối tầng (giá trị Yaw / Pitch)',
         [['Hệ số', 'Giá trị', 't_{r} (ms)', 't_{s} (ms)', 'OS (%)', 'e_{rms} tham chiếu (°)', 'J_{e} (°·s)', 'Dải 10 – 30 Hz (%)']],
-        rows, [1.9, 1.9, 1.7, 1.7, 1.6, 2.0, 2.0, 1.9], size=10, bold_rows=bold,
-        note='Ghi chú: mô phỏng khảo sát; * là giá trị được chọn; e_{rms} tham chiếu khi chưa bù; dải 10 – 30 Hz là tỉ lệ năng lượng sai lệch trong dải chứa dạng dao động 16,5 Hz, tính trên cấu hình hoàn thiện.')
-D.para(f'Trục Yaw: tăng K_{{pθ}} từ 6 lên 9,5 s⁻¹ rút ngắn t_{{r}} từ {f(y[6.0]["tr"], 0)} xuống {f(y[9.5]["tr"], 0)} ms và t_{{s}} từ {f(y[6.0]["ts"], 0)} xuống {f(y[9.5]["ts"], 0)} ms; giá trị 13 s⁻¹ nhanh hơn nhưng lệnh khi bám bậc 5° đạt {f(y[13.0]["umax"], 0)} °/s ({f(y[13.0]["umax"] / 110 * 100, 0)} % ω_{{max}}), không còn dự trữ cho khâu bù. Trục Pitch: cả ba giá trị đều chạm giới hạn theo quãng dừng (2.12) nên t_{{r}} gần như không đổi; 38 s⁻¹ rút ngắn t_{{s}} từ {f(p[20.0]["ts"], 0)} xuống {f(p[38.0]["ts"], 0)} ms nhưng OS tăng lên {f(p[38.0]["OS"], 1)} %. Giá trị này vẫn được chọn vì ưu tiên khử nhiễu (trên cấu hình hoàn thiện, e_{{rms}} Pitch khoảng 0,19° so với 0,26° khi dùng 20 s⁻¹); vọt lố chỉ xuất hiện khi đổi góc đặt. K_{{pω}} lớn hơn giảm sai lệch nhưng đẩy năng lượng vào dải cộng hưởng (tăng 0,28 → 0,40 ở Yaw: {f(kpy[0.28]["band"], 1)} → {f(kpy[0.40]["band"], 1)} %; 0,15 → 0,25 ở Pitch: {f(kpp[0.15]["band"], 1)} → {f(kpp[0.25]["band"], 1)} %), nên giữ 0,28 / 0,15. Tích phân K_{{iω}} = 1,0 s⁻¹ giảm J_{{e}} trục Yaw {red(iw["yaw"][0.0]["Je"], iw["yaw"][1.0]["Je"], 0)}; với Pitch, 0,5 s⁻¹ đã giảm J_{{e}} {red(iw["pitch"][0.0]["Je"], iw["pitch"][0.5]["Je"], 0)} và tăng lên 1,0 không cải thiện e_{{rms}} tham chiếu, nên giữ 0,5 s⁻¹.')
+        rows, [1.7, 1.9, 1.6, 1.8, 1.5, 2.0, 2.5, 1.8], size=10, bold_rows=bold,
+        note='Ghi chú: mô phỏng khảo sát, mỗi giá trị được chạy đủ ba bài thử (bậc thang; khung mang quay đều 8 °/s trong 4 s cho J_{e}; bài thử tham chiếu); * là giá trị được chọn; e_{rms} tham chiếu khi chưa bù; dải 10 – 30 Hz là tỉ lệ năng lượng sai lệch trong dải chứa dạng dao động 16,5 Hz, tính trên cấu hình hoàn thiện.')
+D.para(f'Trục Yaw: tăng K_{{pθ}} từ 6 lên 9,5 s⁻¹ rút ngắn t_{{r}} từ {f(y[6.0]["tr"], 0)} xuống {f(y[9.5]["tr"], 0)} ms và t_{{s}} từ {f(y[6.0]["ts"], 0)} xuống {f(y[9.5]["ts"], 0)} ms; giá trị 13 s⁻¹ nhanh hơn nhưng lệnh khi bám bậc 5° đạt {f(y[13.0]["umax"], 0)} °/s ({f(y[13.0]["umax"] / 110 * 100, 0)} % ω_{{max}}), không còn dự trữ cho khâu bù. Trục Pitch: cả ba giá trị đều chạm giới hạn theo quãng dừng (2.12) nên t_{{r}} gần như không đổi; 38 s⁻¹ rút ngắn t_{{s}} từ {f(p[20.0]["ts"], 0)} xuống {f(p[38.0]["ts"], 0)} ms nhưng OS tăng lên {f(p[38.0]["OS"], 1)} %. Giá trị này vẫn được chọn vì ưu tiên khử nhiễu (trên cấu hình hoàn thiện, e_{{rms}} Pitch khoảng 0,19° so với 0,26° khi dùng 20 s⁻¹); vọt lố chỉ xuất hiện khi đổi góc đặt, đổi lại năng lượng sai lệch trong dải 10 – 30 Hz tăng từ {f(CF["pitch"]["Kpt"][0]["band"], 1)} lên {f(CF["pitch"]["Kpt"][1]["band"], 1)} %. K_{{pω}} lớn hơn giảm sai lệch nhưng đẩy năng lượng vào dải cộng hưởng (tăng 0,28 → 0,40 ở Yaw: {f(kpy[0.28]["band"], 1)} → {f(kpy[0.40]["band"], 1)} %; 0,15 → 0,25 ở Pitch: {f(kpp[0.15]["band"], 1)} → {f(kpp[0.25]["band"], 1)} %), nên giữ 0,28 / 0,15. Tích phân K_{{iω}} = 1,0 s⁻¹ giảm J_{{e}} trục Yaw {red(iw["yaw"][0.0]["Je"], iw["yaw"][1.0]["Je"], 0)}; với Pitch, 0,5 s⁻¹ đã giảm J_{{e}} {red(iw["pitch"][0.0]["Je"], iw["pitch"][0.5]["Je"], 0)} và tăng lên 1,0 không cải thiện e_{{rms}} tham chiếu, nên giữ 0,5 s⁻¹.')
 fig(8, 'h3_08_cascade_truoc_sau', 'Trước và sau hiệu chỉnh bộ điều khiển nối tầng (mô phỏng tái hiện)')
 rows = []
 for lab, key, nd in [('t_{r} bậc thang (ms)', 'tr', 0), ('t_{s} bậc thang (ms)', 'ts', 0), ('OS bậc thang (%)', 'OS', 2)]:
     row = [lab]
     for ax in AX:
         bv = SL['ban_dau'][ax][key]; av = SL['cascade'][ax][key]
-        row += [f(bv, nd), f(av, nd), pc(bv, av) if bv > 0.05 else '–']
+        row += [f(bv, nd), f(av, nd), pc(bv, av) if bv > 0.05 else ('+' if av >= bv else '−') + f(abs(av - bv), 2) + ' điểm %']
     rows.append(row)
 rows += ba_rows('ban_dau', 'cascade', LAD_KEYS)
 D.table('Bảng 3.5. Chỉ tiêu trước và sau hiệu chỉnh bộ điều khiển nối tầng', BA_HEAD, rows, BA_W, size=10,
@@ -161,7 +156,7 @@ D.lead('b) Mô phỏng khảo sát và lựa chọn tham số.', 'So sánh giớ
 fig(13, 'h3_13_khao_sat_gioi_han', 'Mô phỏng khảo sát luật giới hạn lệnh')
 rows = []
 for lab, o in R['lim_survey']:
-    g = gl.get(lab)
+    g = gl.get(lab) or (R4['glitch165'] if '165' in lab else None)
     rows.append([lab] + [f(o['yaw']['erms'], 3), f(o['yaw']['emax'], 2), f(o['yaw']['rho'], 2),
                          f(o['pitch']['erms'], 3), f(o['pitch']['emax'], 2), f(o['pitch']['rho'], 2),
                          (f(g['yaw']['epk'], 2) + ' / ' + f(g['yaw']['upk'], 0)) if g else '–'])
@@ -278,11 +273,11 @@ for i, (a, b, lab) in enumerate(C.SEG):
     rows.append([f'Đoạn {i + 1} ({f(a, 1)} – {f(b, 1)} s)'] + [x for ax in AX for x in (f(V['exc_seg'][ax][i]['rms'], 0) + ' / ' + f(V['exc_seg'][ax][i]['peak'], 0), f(lgs[ax][i]['erms'], 3), f(lgs[ax][i]['emax'], 3))])
 rows.append(['Toàn bài thử'] + [x for ax in AX for x in (f(ex[ax]['rms'], 0) + ' / ' + f(ex[ax]['peak'], 0), f(V['log'][ax]['erms'], 3), f(V['log'][ax]['emax'], 3))])
 rows.append(['Giữ tĩnh (4,5 – 8 s)', '0', f(V['log_hold']['yaw']['erms'], 4), f(V['log_hold']['yaw']['emax'], 3), '0', f(V['log_hold']['pitch']['erms'], 4), f(V['log_hold']['pitch']['emax'], 3)])
-rows.append(['Các lần đổi chiều*', '–', f(ev[('log', 'yaw')]['mean'], 3), f(ev[('log', 'yaw')]['max'], 3), '–', f(ev[('log', 'pitch')]['mean'], 3), f(ev[('log', 'pitch')]['max'], 3)])
+rows.append(['Các lần đổi chiều*', f(R4['rev_w']['yaw']['rms'], 0) + ' / ' + f(R4['rev_w']['yaw']['peak'], 0), f(ev[('log', 'yaw')]['mean'], 3), f(ev[('log', 'yaw')]['max'], 3), f(R4['rev_w']['pitch']['rms'], 0) + ' / ' + f(R4['rev_w']['pitch']['peak'], 0), f(ev[('log', 'pitch')]['mean'], 3), f(ev[('log', 'pitch')]['max'], 3)])
 D.table('Bảng 3.14. Bài thử tham chiếu và kết quả đo cấu hình hoàn thiện theo từng đoạn (log A)',
         [['Đoạn', 'Yaw: ω_{b} hiệu dụng / đỉnh (°/s)', 'Yaw: e_{rms} (°)', 'Yaw: e_{max} (°)', 'Pitch: ω_{b} hiệu dụng / đỉnh (°/s)', 'Pitch: e_{rms} (°)', 'Pitch: e_{max} (°)']],
         rows, [3.6, 2.4, 1.6, 1.6, 2.4, 1.6, 1.6], size=10, bold_rows=[5], align=['left'] + ['center'] * 6,
-        note=f'Ghi chú: số đo trực tiếp; giữ tĩnh: độ lệch chuẩn sau khi trừ giá trị trung bình; (*) đỉnh |e| trung bình / lớn nhất của {ev[("log", "yaw")]["n"]} (Yaw) và {ev[("log", "pitch")]["n"]} (Pitch) lần đổi chiều. Nội dung đoạn: 1 – Yaw dao động chậm; 2 – Pitch dao động; 3 – Yaw dao động nhanh; 4 – Pitch dao động nhanh; 5 – Yaw đảo chiều gắt.')
+        note=f'Ghi chú: số đo trực tiếp; giữ tĩnh: độ lệch chuẩn sau khi trừ giá trị trung bình; (*) đỉnh |e| trung bình / lớn nhất của {ev[("log", "yaw")]["n"]} (Yaw) và {ev[("log", "pitch")]["n"]} (Pitch) lần đổi chiều; ω_{b} của dòng này là giá trị hiệu dụng trong ±0,3 s quanh điểm đổi chiều / đỉnh trung bình trước khi đổi chiều. Nội dung đoạn: 1 – Yaw dao động chậm; 2 – Pitch dao động; 3 – Yaw dao động nhanh; 4 – Pitch dao động nhanh; 5 – Yaw đảo chiều gắt.')
 D.para(f'Cấu hình hoàn thiện đạt e_{{rms}} = {f(V["log"]["yaw"]["erms"], 3)}° (Yaw), {f(V["log"]["pitch"]["erms"], 3)}° (Pitch), e_{{max}} = {f(V["log"]["yaw"]["emax"], 2)}° và {f(V["log"]["pitch"]["emax"], 2)}°, phân vị 99 % {f(V["log"]["yaw"]["p99"], 2)}° và {f(V["log"]["pitch"]["p99"], 2)}°. Sai lệch lớn nhất xuất hiện ở các lần đổi chiều (đỉnh trung bình {f(ev[("log", "yaw")]["mean"], 2)}° / {f(ev[("log", "pitch")]["mean"], 2)}°); đoạn khó nhất với Pitch là đoạn 4 (3 Hz), với Yaw là đoạn 3 và 5. Khi đứng yên, độ lệch chuẩn góc chỉ {f(V["log_hold"]["yaw"]["erms"], 4)}° / {f(V["log_hold"]["pitch"]["erms"], 4)}°, nên nhiễu đo và độ phân giải không phải yếu tố giới hạn.')
 D.lead('b) Quá trình hoàn thiện.', 'Hình 3.22 và Bảng 3.15 tổng hợp các chỉ tiêu qua tám cấu hình (bảy cấu hình đầu là mô phỏng tái hiện; cấu hình hoàn thiện có cả số đo).')
 fig(22, 'h3_22_qua_trinh_hoan_thien', 'Chỉ tiêu sai lệch qua các bước hiệu chỉnh trên bài thử tham chiếu')
@@ -290,23 +285,23 @@ rows = []
 prev = None
 for n in ORDER:
     o = LD[n]
-    rows.append([SHORT[n], f(o['yaw']['erms'], 3), (pc(LD[prev]['yaw']['erms'], o['yaw']['erms']) if prev else '–'),
-                 f(o['pitch']['erms'], 3), (pc(LD[prev]['pitch']['erms'], o['pitch']['erms']) if prev else '–'),
+    rows.append([SHORT[n], f(o['yaw']['erms'], 3), (pc(LD[prev]['yaw']['erms'], o['yaw']['erms']) if prev else 'mốc'),
+                 f(o['pitch']['erms'], 3), (pc(LD[prev]['pitch']['erms'], o['pitch']['erms']) if prev else 'mốc'),
                  f(o['yaw']['p99'], 2) + ' / ' + f(o['pitch']['p99'], 2), f(o['yaw']['rho'], 2) + ' / ' + f(o['pitch']['rho'], 2)])
     prev = n
-rows.append(['Hoàn thiện – đo (log A)', f(V['log']['yaw']['erms'], 3), '–', f(V['log']['pitch']['erms'], 3), '–',
-             f(V['log']['yaw']['p99'], 2) + ' / ' + f(V['log']['pitch']['p99'], 2), '–'])
+rows.append(['Hoàn thiện – đo (log A)', f(V['log']['yaw']['erms'], 3), pc(L7['yaw']['erms'], V['log']['yaw']['erms']) + ' (a)', f(V['log']['pitch']['erms'], 3), pc(L7['pitch']['erms'], V['log']['pitch']['erms']) + ' (a)',
+             f(V['log']['yaw']['p99'], 2) + ' / ' + f(V['log']['pitch']['p99'], 2), f(L7['yaw']['rho'], 2) + ' / ' + f(L7['pitch']['rho'], 2) + ' (b)'])
 D.table('Bảng 3.15. Chỉ tiêu trên bài thử tham chiếu qua các cấu hình',
         [['Cấu hình', 'e_{rms} Yaw (°)', 'So với bước trước', 'e_{rms} Pitch (°)', 'So với bước trước', 'p99 |e| Yaw / Pitch (°)', 'ρ_{sat} Yaw / Pitch (%)']],
         rows, [4.6, 1.5, 1.6, 1.5, 1.6, 2.3, 2.1], size=10, bold_rows=[8], align=['left'] + ['center'] * 6,
-        note='Ghi chú: tám dòng đầu là mô phỏng tái hiện; dòng cuối là số đo trực tiếp.')
+        note='Ghi chú: tám dòng đầu là mô phỏng tái hiện; dòng cuối là số đo trực tiếp. (a) so với cấu hình hoàn thiện mô phỏng tái hiện; (b) log A không ghi cờ bão hòa lệnh, giá trị lấy từ mô phỏng tái hiện.')
 D.para(f'Từ cấu hình ban đầu đến hoàn thiện, e_{{rms}} tái hiện giảm từ {f(L0["yaw"]["erms"], 2)}° xuống {f(L7["yaw"]["erms"], 3)}° ({red(L0["yaw"]["erms"], L7["yaw"]["erms"], 1)}) ở Yaw và từ {f(L0["pitch"]["erms"], 2)}° xuống {f(L7["pitch"]["erms"], 3)}° ({red(L0["pitch"]["erms"], L7["pitch"]["erms"], 1)}) ở Pitch. Ba bước giảm sai lệch theo bậc độ lớn là bù IMU2 ({red(L1["yaw"]["erms"], L2["yaw"]["erms"], 0)} / {red(L1["pitch"]["erms"], L2["pitch"]["erms"], 0)} e_{{rms}} Yaw / Pitch), ngoại suy bù trễ ({red(L2["yaw"]["erms"], L3["yaw"]["erms"], 0)} / {red(L2["pitch"]["erms"], L3["pitch"]["erms"], 0)}) và giới hạn lệnh động ({red(L3["yaw"]["erms"], L4["yaw"]["erms"], 0)} / {red(L3["pitch"]["erms"], L4["pitch"]["erms"], 0)}); hiệu chỉnh nối tầng chủ yếu cải thiện đặc tính bám. Ba bước sau không nhằm giảm e_{{rms}} mà xử lý trạng thái giữ sau khi dừng, độ êm của lệnh và tính tất định của truyền thông; chi phí của chúng lên e_{{rms}} nằm trong vài phần trăm, riêng lịch luân phiên đổi một phần độ chính xác trục Yaw lấy độ chính xác và tính đều đặn của trục Pitch.')
 D.lead('c) Đánh giá tổng hợp theo yêu cầu kỹ thuật.', 'Bảng 3.16 đánh giá cấu hình hoàn thiện theo các nhóm chỉ tiêu của Bảng 1.1: nhóm khử nhiễu và độ chính xác theo số đo log A so với mục tiêu của đề tài, nhóm thời gian thực theo ngưỡng thiết kế ở Chương 2.')
 D.table('Bảng 3.16. Đánh giá tổng hợp cấu hình hoàn thiện theo chỉ tiêu kỹ thuật',
         [['Nhóm', 'Chỉ tiêu', 'Mục tiêu / ngưỡng', 'Kết quả', 'Nguồn', 'Đánh giá']],
         [['Khử nhiễu', 'e_{rms} Yaw / Pitch, bài thử tham chiếu', '≈ 0,2°', f(V['log']['yaw']['erms'], 3) + '° / ' + f(V['log']['pitch']['erms'], 3) + '°', 'Đo', 'Đạt'],
          ['Khử nhiễu', 'e_{max} Yaw / Pitch', '0,5 – 1,0°', f(V['log']['yaw']['emax'], 2) + '° / ' + f(V['log']['pitch']['emax'], 2) + '°', 'Đo', 'Đạt'],
-         ['Khử nhiễu', 'Giảm e_{rms} so với cấu hình ban đầu', '–', red(L0['yaw']['erms'], L7['yaw']['erms'], 1) + ' / ' + red(L0['pitch']['erms'], L7['pitch']['erms'], 1), 'Tái hiện', 'Cải thiện'],
+         ['Khử nhiễu', 'Giảm e_{rms} so với cấu hình ban đầu', 'Không đặt ngưỡng', red(L0['yaw']['erms'], L7['yaw']['erms'], 1) + ' / ' + red(L0['pitch']['erms'], L7['pitch']['erms'], 1), 'Tái hiện', 'Cải thiện'],
          ['Khử nhiễu', 'Tỉ lệ bão hòa lệnh ρ_{sat}', '≈ 0', f(L7['yaw']['rho'], 2) + ' % / ' + f(L7['pitch']['rho'], 2) + ' %', 'Tái hiện', 'Đạt'],
          ['Độ chính xác', 'Độ lệch chuẩn góc khi giữ tĩnh', '< 0,03°', f(V['log_hold']['yaw']['erms'], 4) + '° / ' + f(V['log_hold']['pitch']['erms'], 4) + '°', 'Đo', 'Đạt'],
          ['Đáp ứng', 't_{r} / OS bậc thang Yaw', 'OS < 1 %', f(SL['cascade']['yaw']['tr'], 0) + ' ms / ' + f(SL['cascade']['yaw']['OS'], 2) + ' %', 'Tái hiện', 'Đạt'],
