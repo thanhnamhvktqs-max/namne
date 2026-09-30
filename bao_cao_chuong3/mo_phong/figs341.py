@@ -1,6 +1,6 @@
 """Hinh cho muc 3.4.1 - Hoan thien lich truyen RS485 (Hinh 3.19 - 3.21), cung chuan voi figs2.py.
 
-Chay: python figs341.py figs log_A.txt
+Chay: python figs341.py figs log_A.txt [full] [short]
 """
 import sys, re, pickle
 import numpy as np
@@ -62,6 +62,7 @@ def dur(ax, t):
 
 
 def draw_timeline(a, mode):
+    a._hcm_ref = 2.3
     ev, slots, miss = timeline(mode, dur)
     for s in slots:
         a.axvline(s * 1e3, color='#8c8c8c', lw=0.9, ls=F.DOT, zorder=1)
@@ -74,7 +75,7 @@ def draw_timeline(a, mode):
                           edgecolor=INK if lg else 'none', lw=0.9, hatch='////' if lg else None, zorder=3)
             if lg:
                 xc = s * 1e3 + d / 2
-                lift = 0.62 if labs and xc - labs[-1][0] < 6.5 and labs[-1][1] == 0 else 0.0
+                lift = 0.62 * a._hcm_ref / a._hcm if labs and xc - labs[-1][0] < 6.5 and labs[-1][1] == 0 else 0.0
                 labs.append((xc, lift))
                 ann(a.text(xc, yy + 0.36 + lift, num(d, 1) + ' ms', ha='center', va='bottom', fontsize=9))
     for tm in miss:
@@ -88,7 +89,7 @@ def draw_timeline(a, mode):
         nd = 0 if abs(dd - round(dd)) < 0.05 else 1
         ann(a.text((x0 + x1) / 2, -0.74, num(dd, nd) + ' ms', ha='center', va='top', fontsize=9.5, color=c,
                    fontweight='bold' if bad else 'normal', bbox=dict(fc='white', ec='none', pad=0.6), zorder=5))
-    a.set_xlim(-0.5, 72); a.set_ylim(-1.45, 2.45)
+    a.set_xlim(-0.5, 72); a.set_ylim(-1.75, 2.45 + (0.62 * 2.3 / a._hcm - 0.62))
     a.set_yticks([0, 1]); a.set_yticklabels(['Pitch', 'Yaw'])
     a.xaxis.set_major_locator(mt.MultipleLocator(10))
     a.grid(False); a.tick_params(axis='y', length=0)
@@ -240,5 +241,61 @@ def fig321():
                    extra=dict(row=dict(cols=F.TWO, h=2.6, top=F.LEG2), draw=draw_bus))
 
 
+# ---------------------------------------------------------------------------- ban rut gon (mot hinh, chi mo phong)
+def fig319_short():
+    """Ban rut gon cua muc 3.4.1: gian do bus (a, b), khoang cap nhat Pitch (c), sai lech theo khoang cap nhat (d)."""
+    fig, G = F.new_fig([dict(cols=F.ONE, h=1.7, top=F.LEG2, bot=F.BOT0), dict(cols=F.ONE, h=1.7),
+                        dict(cols=F.TWO, h=2.0, top=F.LEG2, bot=F.BOT2)])
+    draw_timeline(G[0]['axes'][0], 'yawpri')
+    G[0]['axes'][0].set_xlabel('')
+    F.subcap(fig, G[0], 0, 'a) Lịch ưu tiên Yaw')
+    draw_timeline(G[1]['axes'][0], 'alt')
+    F.subcap(fig, G[1], 0, 'b) Lịch luân phiên, khe 5 ms (chọn)')
+    F.band_legend(fig, G[0], [Patch(facecolor=PAL['yaw']['main']), Patch(facecolor=PAL['pitch']['main']),
+                              Patch(facecolor='white', edgecolor=INK, hatch='////', lw=0.9),
+                              Line2D([], [], marker='x', ms=7, mew=1.6, color=INK, lw=0),
+                              Line2D([], [], color='#8c8c8c', lw=0.9, ls=F.DOT)],
+                  ['Giao dịch Yaw', 'Giao dịch Pitch', 'Giao dịch Yaw > 2,25 ms', 'Lượt Pitch bị hoãn', 'Đầu khe'],
+                  ncol=3, hl=1.6)
+    # c) khoang cap nhat Pitch theo thoi gian (mo phong theo su kien)
+    a = G[2]['axes'][0]
+    gy = np.asarray(R5['survey'][('yawpri', 5e-3)]['sched']['pitch']['gaps'], float)
+    ga = np.asarray(R5['survey'][('alt', 5e-3)]['sched']['pitch']['gaps'], float)
+    ty = np.cumsum(gy) / 1e3; ta = np.cumsum(ga) / 1e3
+    i = int(np.argmax(gy >= 25)); t0 = max(0.0, ty[i] - 0.45); t1 = t0 + 1.0
+    sy = dict(color=INK, lw=1.1, ls=F.DASH, marker='o', ms=3.4, mfc='white', mew=0.8)
+    sa = dict(color=PAL['pitch']['main'], lw=2.2, ls='-')
+    for t_, g_, sty, z in ((ty, gy, sy, 3), (ta, ga, sa, 5)):
+        m = (t_ >= t0) & (t_ < t1)
+        a.plot(t_[m] - t0, g_[m], zorder=z, **sty)
+    a.axhline(10, **F.REF, zorder=2)
+    a.set_xlim(0, 1.0); a.set_ylim(0, 36); a.yaxis.set_major_locator(mt.MultipleLocator(10))
+    a.set_xlabel('Thời gian (s)'); a.set_ylabel('$\\Delta$ (ms)')
+    F.band_legend(fig, G[2], [Line2D([], [], **sy), Line2D([], [], **sa)], ['Ưu tiên Yaw', 'Luân phiên, khe 5 ms'],
+                  ncol=1, cx=F.TWO[0][0] + F.PW / 2)
+    F.subcap(fig, G[2], 0, 'c) Khoảng cập nhật của trục Pitch')
+    # d) sai lech lon nhat trong moi khoang cap nhat Pitch (thu cap tren mo phong tai hien)
+    a = G[2]['axes'][1]
+    bg = R5['pair']['by_gap']; ntot = sum(v['n'] for v in bg.values())
+    x = np.arange(3)
+    vy = [bg[c]['eY'] for c in range(3)]; vr = [bg[c]['eR'] for c in range(3)]
+    a.bar(x - 0.19, vy, 0.36, color=BEF_BAR, zorder=3)
+    a.bar(x + 0.19, vr, 0.36, color=PAL['pitch']['main'], zorder=3)
+    for xi, y1, y2 in zip(x, vy, vr):
+        ann(a.text(xi - 0.19, y1 + 0.004, '+' + num((y1 / y2 - 1) * 100, 0) + ' %', ha='center', va='bottom', fontsize=9.5))
+    a.set_xticks(x)
+    a.set_xticklabels([f'{lab}\n({num(bg[c]["n"] / ntot * 100, 0)} %)' for c, lab in enumerate(['≈ 10 ms', '≈ 15 ms', '≥ 20 ms'])])
+    a.set_ylim(0, max(vy) * 1.2); a.set_xlim(-0.55, 2.55)
+    a.set_xlabel('Khoảng cập nhật $\\Delta$ của Pitch'); a.set_ylabel('max $|e|$ (°)'); F.bar_axes(a)
+    F.band_legend(fig, G[2], [Patch(facecolor=BEF_BAR), Patch(facecolor=PAL['pitch']['main'])],
+                  ['Theo lịch ưu tiên Yaw', 'Cập nhật đều 10 ms'], ncol=1, cx=F.TWO[1][0] + F.PW / 2, hl=1.6)
+    F.subcap(fig, G[2], 1, 'd) Sai lệch Pitch theo khoảng cập nhật')
+    F.finish(fig, 'h3_19_lich_rs485')
+
+
 if __name__ == '__main__':
-    fig319(); fig320(); fig321()
+    sel = sys.argv[3:] or ['full', 'short']
+    if 'full' in sel:
+        fig319(); fig320(); fig321()
+    if 'short' in sel:
+        fig319_short()

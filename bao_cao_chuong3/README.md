@@ -4,7 +4,8 @@
 - `Chuong3_3.1.3_den_het.pdf`: bản xem trước (xuất bằng LibreOffice, 26 trang).
 - `hinh/`: 18 hình PNG 600 dpi, vẽ đúng kích thước trên trang A4 (rộng ≤ 16 cm) và chèn vào Word không co giãn.
 - `mo_phong/`: mã nguồn tái tạo toàn bộ số liệu và hình.
-- `Muc_3.4.1_lich_RS485.docx` / `.pdf`: bản thiết kế lại riêng mục 3.4.1 (Hình 3.19 – 3.21, Bảng 3.12 – 3.13, công thức (3.7)); hình ở `hinh_3.4.1/`. Khi ghép vào chương, mục này có thêm một hình nên các hình sau nó tăng số thứ tự thêm 1 (Hình 3.21 cũ thành 3.22, Hình 3.22 cũ thành 3.23).
+- `Muc_3.4.1_lich_RS485_rut_gon.docx` / `.pdf`: bản rút gọn mục 3.4.1 (2 trang A4): một hình (Hình 3.19, chỉ số liệu mô phỏng, không có số đo log A trên hình) và một bảng (Bảng 3.12); số đo log A chỉ nêu trong lời văn. Khi ghép vào chương, bản này có ít hơn bản cũ một hình và một bảng nên các hình, bảng phía sau giảm số thứ tự 1.
+- `Muc_3.4.1_lich_RS485.docx` / `.pdf`: bản đầy đủ mục 3.4.1 (Hình 3.19 – 3.21, Bảng 3.12 – 3.13, công thức (3.7)); hình ở `hinh_3.4.1/`. Khi ghép vào chương, mục này có thêm một hình nên các hình sau nó tăng số thứ tự thêm 1 (Hình 3.21 cũ thành 3.22, Hình 3.22 cũ thành 3.23).
 
 ## Chuẩn trình bày hình
 
@@ -39,5 +40,6 @@ cat build_head.py build_body.py > build_ch3.py && python build_ch3.py
 # riêng mục 3.4.1
 python run_part5.py       # thử cặp lịch Pitch, khảo sát lịch / độ dài khe, bộ đếm bus log A
 python figs341.py figs log_A.txt
-python build341.py
+python build341.py        # bản đầy đủ
+python build341_ngan.py   # bản rút gọn 2 trang
 ```
