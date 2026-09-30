@@ -324,11 +324,11 @@ def _chg(vb, va):
     return ('+' if d > 0 else '−') + num(abs(d), 1) + ' %'
 
 
-def before_after(name, before, after_, windows, metrics, extra_log=False, extra=None):
+def before_after(name, before, after_, windows, metrics, extra_log=False, extra=None, h_top=3.0):
     """extra: {'row': dict hang bo sung, 'draw': ham(fig, g)} - them mot hang hinh con sau c)."""
     nm = len(metrics)
     ax0, axw = 3.9, 6.9          # hinh con c): le trai rong cho ten chi tieu, cot gia tri ben phai
-    rows = [dict(cols=TWO, h=3.0, top=LEG1), dict(cols=[(ax0, axw)], h=0.82 * nm + 0.2, top=LEG1)]
+    rows = [dict(cols=TWO, h=h_top, top=LEG1), dict(cols=[(ax0, axw)], h=0.82 * nm + 0.2, top=LEG1)]
     if extra:
         rows.append(extra['row'])
     fig, G = new_fig(rows)

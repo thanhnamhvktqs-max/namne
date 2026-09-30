@@ -1,6 +1,6 @@
 """Hinh cho muc 3.4.1 - Hoan thien lich truyen RS485 (Hinh 3.19 - 3.21), cung chuan voi figs2.py.
 
-Chay: python figs341.py figs log_A.txt [full] [short]
+Chay: python figs341.py <thu_muc_hinh> <duong_dan_log_A>
 """
 import sys, re, pickle
 import numpy as np
@@ -150,7 +150,7 @@ def fig319():
 def fig320():
     lab0, w3 = 3.55, 3.6
     cols3 = [(lab0, w3), (lab0 + w3 + 0.45, w3), (lab0 + 2 * (w3 + 0.45), w3)]
-    fig, G = F.new_fig([dict(cols=cols3, h=3.3, top=F.LEG1), dict(cols=[(lab0, 3 * w3 + 0.9)], h=2.3, top=F.LEG2)])
+    fig, G = F.new_fig([dict(cols=cols3, h=2.9, top=F.LEG1), dict(cols=[(lab0, 3 * w3 + 0.9)], h=2.0, top=F.LEG2)])
     SV = R5['survey']
     y = np.arange(len(CANDS))
     specs = [('rate', 'Tần số (Hz)', 'a) Tần số cập nhật', lambda s, ax: s['sched'][ax]['rate']),
@@ -176,18 +176,19 @@ def fig320():
         a.barh(i, T_TX, 0.5, left=0, color='#3d3d3d', zorder=3)
         a.barh(i, T_WIN - T_TX, 0.5, left=T_TX, color='#9e9e9e', zorder=3)
         a.barh(i, T - T_WIN, 0.5, left=T_WIN, facecolor='white', edgecolor='#3d3d3d', hatch='\\\\\\\\', lw=0.9, zorder=3)
-        ann(a.text(T + 0.1, i, 'dự trữ ' + num(T - T_WIN, 1) + ' ms', ha='left', va='center', fontsize=9.5))
-    a.axvline(8.0, color=INK, lw=1.3, ls=F.DASH, zorder=4)
+        ann(a.text(T + 0.1, i, 'dự trữ ' + num(T - T_WIN, 1) + ' ms', ha='left', va='center', fontsize=9.5,
+                   bbox=dict(fc='white', ec='none', pad=0.8), zorder=5))
+    a.axvspan(4.0, 7.5, facecolor='#e9e2f3', lw=0, zorder=1)
     a.set_yticks(yy); a.set_yticklabels([f'Khe {num(T, 0)} ms' for T in slots])
     F.hilite(a, 1, horiz=True)
-    a.set_ylim(2.5, -0.5); a.set_xlim(0, 8.6)
+    a.set_ylim(2.5, -0.5); a.set_xlim(0, 8.0)
     a.xaxis.set_major_locator(mt.MultipleLocator(1))
     a.set_xlabel('Thời gian tính từ đầu khe (ms)'); F.bar_axes(a, horiz=True)
     F.band_legend(fig, G[1], [Patch(facecolor='#3d3d3d'), Patch(facecolor='#9e9e9e'),
                               Patch(facecolor='white', edgecolor='#3d3d3d', hatch='\\\\\\\\', lw=0.9),
-                              Patch(facecolor='#cfe3d4'), Line2D([], [], color=INK, lw=1.3, ls=F.DASH)],
+                              Patch(facecolor='#cfe3d4'), Patch(facecolor='#e9e2f3')],
                   ['Phát khung lệnh (0,43 ms)', 'Chờ phản hồi (tối đa 3 ms)', 'Dự trữ',
-                   'Giao dịch thông thường', 'Giao dịch dài nhất (log A)'], ncol=3, hl=1.6)
+                   'Giao dịch thông thường', 'Giao dịch kéo dài (mô hình)'], ncol=3, hl=1.6)
     F.subcap(fig, G[1], 0, 'd) Ngân sách thời gian của một khe')
     F.finish(fig, 'h3_20_khao_sat_rs485')
 
@@ -293,9 +294,17 @@ def fig319_short():
     F.finish(fig, 'h3_19_lich_rs485')
 
 
+def fig321_sim():
+    """Truoc / sau chi voi mo phong tai hien (khong co so do log A tren hinh)."""
+    F.before_after('h3_21_rs485_truoc_sau_mp', 'tao_dang', 'hoan_thien', {'yaw': (50.4, 52.4), 'pitch': (64.2, 65.7)},
+                   ['erms', 'p99', 'emax'], h_top=2.3)
+
+
 if __name__ == '__main__':
     sel = sys.argv[3:] or ['full', 'short']
     if 'full' in sel:
         fig319(); fig320(); fig321()
     if 'short' in sel:
         fig319_short()
+    if '4tr' in sel:
+        fig319_short(); fig320(); fig321_sim()
