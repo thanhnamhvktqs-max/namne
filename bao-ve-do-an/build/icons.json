@@ -1,0 +1,312 @@
+[
+ {
+  "name": "plane",
+  "lib": "fa",
+  "icon": "FaPlane"
+ },
+ {
+  "name": "plane_io",
+  "lib": "io5",
+  "icon": "IoAirplane"
+ },
+ {
+  "name": "eye",
+  "lib": "fa",
+  "icon": "FaEye"
+ },
+ {
+  "name": "binoculars",
+  "lib": "fa",
+  "icon": "FaBinoculars"
+ },
+ {
+  "name": "crosshairs",
+  "lib": "fa",
+  "icon": "FaCrosshairs"
+ },
+ {
+  "name": "lifering",
+  "lib": "fa",
+  "icon": "FaLifeRing"
+ },
+ {
+  "name": "map",
+  "lib": "fa",
+  "icon": "FaMapMarkedAlt"
+ },
+ {
+  "name": "chip",
+  "lib": "fa",
+  "icon": "FaMicrochip"
+ },
+ {
+  "name": "compass",
+  "lib": "fa",
+  "icon": "FaCompass"
+ },
+ {
+  "name": "cog",
+  "lib": "fa",
+  "icon": "FaCog"
+ },
+ {
+  "name": "cogs",
+  "lib": "fa",
+  "icon": "FaCogs"
+ },
+ {
+  "name": "bolt",
+  "lib": "fa",
+  "icon": "FaBolt"
+ },
+ {
+  "name": "desktop",
+  "lib": "fa",
+  "icon": "FaDesktop"
+ },
+ {
+  "name": "shield",
+  "lib": "fa",
+  "icon": "FaShieldAlt"
+ },
+ {
+  "name": "sync",
+  "lib": "fa",
+  "icon": "FaSyncAlt"
+ },
+ {
+  "name": "exchange",
+  "lib": "fa",
+  "icon": "FaExchangeAlt"
+ },
+ {
+  "name": "network",
+  "lib": "fa",
+  "icon": "FaNetworkWired"
+ },
+ {
+  "name": "stopwatch",
+  "lib": "fa",
+  "icon": "FaStopwatch"
+ },
+ {
+  "name": "layers",
+  "lib": "fa",
+  "icon": "FaLayerGroup"
+ },
+ {
+  "name": "cube",
+  "lib": "fa",
+  "icon": "FaCube"
+ },
+ {
+  "name": "code",
+  "lib": "fa",
+  "icon": "FaCode"
+ },
+ {
+  "name": "wave",
+  "lib": "fa",
+  "icon": "FaWaveSquare"
+ },
+ {
+  "name": "sliders",
+  "lib": "fa",
+  "icon": "FaSlidersH"
+ },
+ {
+  "name": "chartline",
+  "lib": "fa",
+  "icon": "FaChartLine"
+ },
+ {
+  "name": "flask",
+  "lib": "fa",
+  "icon": "FaFlask"
+ },
+ {
+  "name": "check",
+  "lib": "fa",
+  "icon": "FaCheck"
+ },
+ {
+  "name": "checkcircle",
+  "lib": "fa",
+  "icon": "FaCheckCircle"
+ },
+ {
+  "name": "timescircle",
+  "lib": "fa",
+  "icon": "FaTimesCircle"
+ },
+ {
+  "name": "balance",
+  "lib": "fa",
+  "icon": "FaBalanceScale"
+ },
+ {
+  "name": "warning",
+  "lib": "fa",
+  "icon": "FaExclamationTriangle"
+ },
+ {
+  "name": "bullseye",
+  "lib": "fa",
+  "icon": "FaBullseye"
+ },
+ {
+  "name": "lightbulb",
+  "lib": "fa",
+  "icon": "FaLightbulb"
+ },
+ {
+  "name": "route",
+  "lib": "fa",
+  "icon": "FaRoute"
+ },
+ {
+  "name": "tools",
+  "lib": "fa",
+  "icon": "FaTools"
+ },
+ {
+  "name": "video",
+  "lib": "fa",
+  "icon": "FaVideo"
+ },
+ {
+  "name": "camera",
+  "lib": "fa",
+  "icon": "FaCamera"
+ },
+ {
+  "name": "power",
+  "lib": "fa",
+  "icon": "FaPowerOff"
+ },
+ {
+  "name": "tachometer",
+  "lib": "fa",
+  "icon": "FaTachometerAlt"
+ },
+ {
+  "name": "thermo",
+  "lib": "fa",
+  "icon": "FaThermometerHalf"
+ },
+ {
+  "name": "list",
+  "lib": "fa",
+  "icon": "FaListAlt"
+ },
+ {
+  "name": "plug",
+  "lib": "fa",
+  "icon": "FaPlug"
+ },
+ {
+  "name": "ruler",
+  "lib": "fa",
+  "icon": "FaDraftingCompass"
+ },
+ {
+  "name": "sitemap",
+  "lib": "fa",
+  "icon": "FaSitemap"
+ },
+ {
+  "name": "history",
+  "lib": "fa",
+  "icon": "FaHistory"
+ },
+ {
+  "name": "undo",
+  "lib": "fa",
+  "icon": "FaUndo"
+ },
+ {
+  "name": "hand",
+  "lib": "fa",
+  "icon": "FaHandPaper"
+ },
+ {
+  "name": "bell",
+  "lib": "fa",
+  "icon": "FaBell"
+ },
+ {
+  "name": "random",
+  "lib": "fa",
+  "icon": "FaRandom"
+ },
+ {
+  "name": "arrowsalt",
+  "lib": "fa",
+  "icon": "FaArrowsAlt"
+ },
+ {
+  "name": "wind",
+  "lib": "fa",
+  "icon": "FaWind"
+ },
+ {
+  "name": "drone",
+  "lib": "gi",
+  "icon": "GiDeliveryDrone"
+ },
+ {
+  "name": "jet",
+  "lib": "gi",
+  "icon": "GiJetFighter"
+ },
+ {
+  "name": "radar",
+  "lib": "gi",
+  "icon": "GiRadarSweep"
+ },
+ {
+  "name": "plane_md",
+  "lib": "md",
+  "icon": "MdAirplanemodeActive"
+ },
+ {
+  "name": "tb_drone",
+  "lib": "tb",
+  "icon": "TbDrone"
+ },
+ {
+  "name": "tb_plane",
+  "lib": "tb",
+  "icon": "TbPlane"
+ },
+ {
+  "name": "layergroup",
+  "lib": "fa",
+  "icon": "FaLayerGroup"
+ },
+ {
+  "name": "database",
+  "lib": "fa",
+  "icon": "FaDatabase"
+ },
+ {
+  "name": "play",
+  "lib": "fa",
+  "icon": "FaPlay"
+ },
+ {
+  "name": "satdish",
+  "lib": "fa",
+  "icon": "FaSatelliteDish"
+ },
+ {
+  "name": "memory",
+  "lib": "fa",
+  "icon": "FaMemory"
+ },
+ {
+  "name": "star",
+  "lib": "fa",
+  "icon": "FaStar"
+ }
+]
